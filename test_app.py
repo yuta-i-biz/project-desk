@@ -46,6 +46,16 @@ class DeskTests(unittest.TestCase):
         canonical=[p for p in data['projects'] if p.get('canonical_gantt')]
         self.assertEqual({p['name'] for p in canonical},{'承認待ち','備品'})
         self.assertEqual(len({t['project_id'] for t in data['sheet_tasks']}),2)
+    def test_schedule_validation_and_dependency_cycles(self):
+        first=self.desk.mutate('create',{'project_id':self.pid,'title':'先の作業','due_date':'2026-10-30','start_date':'2026-10-26','effort_days':'2'})
+        second=self.desk.mutate('create',{'project_id':self.pid,'title':'後の作業','depends_on':first['id']})
+        with self.assertRaises(ValueError):self.desk.mutate('update',{'id':first['id'],'version':1,'status':'未着手','depends_on':second['id']})
+        with self.assertRaises(ValueError):self.desk.mutate('create',{'project_id':self.pid,'title':'不正日','due_date':'2026-02-30'})
+        with self.assertRaises(ValueError):self.desk.mutate('create',{'project_id':self.pid,'title':'逆転日','due_date':'2026-10-26','start_date':'2026-10-30'})
+        self.desk.mutate('update',{'id':first['id'],'version':1,'status':'作業中','next_action':'検証'})
+        task=next(t for t in self.desk.snapshot()['tasks'] if t['id']==first['id'])
+        self.assertEqual(task['due_date'],'2026-10-30')
+        self.assertEqual(len(self.desk.snapshot()['tasks']),2)
     def test_no_fuzzy_merge(self):
         self.note.with_name('【会社A：案件甲_改修】.md').write_text('## 現在地\n別の記録')
         self.assertEqual(len(self.desk.collect(force=True)['projects']),2)

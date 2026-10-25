@@ -84,6 +84,9 @@ class Desk:
               session_id TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,updated TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1);
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT,project_id TEXT,at TEXT NOT NULL,kind TEXT NOT NULL,note TEXT NOT NULL);
             ''')
+            existing={row[1] for row in c.execute('PRAGMA table_info(tasks)')}
+            for name,definition in [('due_date',"TEXT NOT NULL DEFAULT ''"),('start_date',"TEXT NOT NULL DEFAULT ''"),('effort_days',"TEXT NOT NULL DEFAULT ''"),('depends_on',"TEXT NOT NULL DEFAULT ''"),('deadline_reason',"TEXT NOT NULL DEFAULT ''"),('completion_criteria',"TEXT NOT NULL DEFAULT ''")]:
+                if name not in existing:c.execute('ALTER TABLE tasks ADD COLUMN '+name+' '+definition)
     def connect(self):
         c = sqlite3.connect(self.db, timeout=15); c.row_factory = sqlite3.Row
         c.execute('PRAGMA foreign_keys=ON'); return c
@@ -318,9 +321,13 @@ class Desk:
                 if pid not in self.project_ids():raise ValueError('案件が見つかりません。')
                 tid='task-'+secrets.token_hex(8)
                 next_action=optional(payload,'next_action',2000)
+                from scheduling import validate
                 with self.connect() as c:
+                    schedule=validate(c,payload,pid,tid)
+
                     c.execute('INSERT INTO tasks(id,project_id,title,status,next_action,created,updated) VALUES(?,?,?,?,?,?,?)',
                         (tid,pid,title,'未着手',next_action,stamp,stamp))
+                    c.execute('UPDATE tasks SET due_date=?,start_date=?,effort_days=?,depends_on=?,deadline_reason=?,completion_criteria=? WHERE id=?',(*schedule.values(),tid))
                     c.execute('INSERT INTO events(task_id,project_id,at,kind,note) VALUES(?,?,?,?,?)',(tid,pid,stamp,'タスク追加',title))
                 return {'id':tid,'status':'未着手','version':1}
             if action=='update':
@@ -332,6 +339,8 @@ class Desk:
                 with self.connect() as c:
                     current=c.execute('SELECT * FROM tasks WHERE id=?',(tid,)).fetchone()
                     if current is None:raise ValueError('タスクが見つかりません。')
+                    from scheduling import validate
+                    schedule=validate(c,payload,current['project_id'],tid,current)
                     values={k:optional(payload,k,4000) if k in payload else current[k] for k in ['next_action','blocker','result','session_id']}
                     if status=='完了' and not values['result'].strip():raise ValueError('完了にするには成果物または確認結果を記録してください。')
                     if status in ('確認待ち','保留') and not values['blocker'].strip():raise ValueError('待っている理由を記録してください。')
@@ -339,6 +348,7 @@ class Desk:
                     cursor=c.execute('UPDATE tasks SET status=?,next_action=?,blocker=?,result=?,session_id=?,updated=?,version=version+1 WHERE id=? AND version=?',
                         (status,values['next_action'],values['blocker'],values['result'],values['session_id'],stamp,tid,version))
                     if cursor.rowcount!=1:raise Conflict('別の画面で更新されています。最新を読み直してください。')
+                    c.execute('UPDATE tasks SET due_date=?,start_date=?,effort_days=?,depends_on=?,deadline_reason=?,completion_criteria=? WHERE id=?',(*schedule.values(),tid))
                     c.execute('INSERT INTO events(task_id,project_id,at,kind,note) VALUES(?,?,?,?,?)',
                         (tid,current['project_id'],stamp,'状態更新',status+' / '+(values['result'] if status=='完了' else values['blocker'] if status in ('確認待ち','保留') else values['next_action'])))
                 return {'id':tid,'version':version+1,'status':status}

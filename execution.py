@@ -33,7 +33,7 @@ def submit(desk,payload):
     from routing import choose
     engine,route_reason=choose(prompt,engines,requested)
     project=next(p for p in desk.collect()['projects'] if p['id']==pid)
-    task=desk.mutate('create',{'project_id':pid,'title':prompt.strip().splitlines()[0][:200],'next_action':prompt[:2000]})
+    task=desk.mutate('create',{'project_id':pid,'title':prompt.strip().splitlines()[0][:200],'next_action':prompt[:2000],**{k:payload[k] for k in ['due_date','start_date','effort_days','depends_on','deadline_reason','completion_criteria'] if k in payload}})
     folder=desk.data/'requests'/task['id'];folder.mkdir(parents=True,mode=0o700)
     context={'project':project['name'],'company':project['company'],'sources':[{k:s.get(k) for k in ['type','machine','path','sections']} for s in project['sources']]}
     (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))

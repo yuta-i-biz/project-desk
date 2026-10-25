@@ -17,7 +17,7 @@ api.controls=function(data,pid){
  const toggle=button(enabled?(armed?'🔊 読み上げ ON':'🔊 読み上げを再開'):'🔇 読み上げ OFF',()=>{if(enabled&&armed){enabled=false;armed=false;conversation=false;stop();}else{enabled=true;armed=true;say('読み上げをオンにしました。'+important(data,pid));}try{localStorage.setItem('desk-speech',enabled?'on':'off');}catch{}toggle.textContent=enabled?'🔊 読み上げ ON':'🔇 読み上げ OFF';});toggle.setAttribute('aria-pressed',String(enabled&&armed));
  button('重要なことを読む',()=>{enabled=true;armed=true;say(important(data,pid));});
  button('停止',()=>{conversation=false;stop();notice('読み上げを停止しました。');});
- const talk=button('会話モード OFF',()=>{conversation=!conversation;if(conversation){enabled=true;armed=true;}talk.textContent='会話モード '+(conversation?'ON':'OFF');notice(conversation?'話した内容を選択中の案件へ自動送信します。外部操作の承認条件は維持されます。マイクで話し始めてください。':'音声入力は送信前に確認できます。');});talk.setAttribute('aria-label','音声の自動送信を切り替える');
+ const talk=button('会話モード '+(conversation?'ON':'OFF'),()=>{conversation=!conversation;if(conversation){enabled=true;armed=true;}talk.textContent='会話モード '+(conversation?'ON':'OFF');notice(conversation?'話した内容を選択中の案件へ自動送信します。外部操作の承認条件は維持されます。マイクで話し始めてください。':'音声入力は送信前に確認できます。');});talk.setAttribute('aria-label','音声の自動送信を切り替える');
  const status=document.createElement('p');status.id='voice-status';status.setAttribute('role','status');status.textContent='画面を開いている間に利用できます。音声認識はブラウザのサービスを使う場合があります。';el.append(status);return el;
 };
 api.isConversation=()=>conversation;
