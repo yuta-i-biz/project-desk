@@ -1,0 +1,13 @@
+data/
+vendor/
+work/
+outputs/
+__pycache__/
+*.pyc
+*.sqlite*
+*.db
+*.log
+.env*
+.DS_Store
+*.png
+*.jpg
