@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict');const {classify,list}=require('./static/action_center.js');
+const waiting={status:'確認待ち'};
+assert.equal(classify({...waiting,blocker:'接続失敗'}).owner,'ai');
+assert.equal(classify({...waiting,blocker:'実マイクとスマホ実機の確認が残る'}).owner,'human');
+assert.equal(classify({...waiting,title:'承認して送信',blocker:''}).owner,'unknown');
+assert.equal(classify({...waiting,blocker:'作業結果を受信しました。確認してください。'}).owner,'unknown');
+assert.equal(classify({...waiting,blocker:'本人操作待ち',receipt:{review:{status:'issues'}}}).owner,'ai');
+assert.equal(classify({...waiting,receipt:{execution_status:'succeeded',review:{status:'reviewed'}}}).owner,'human');
+assert.equal(classify({...waiting,receipt:{execution_status:'failed'}}).owner,'ai');
+assert.equal(classify({status:'作業中',needs_check:true}).owner,'ai');
+assert.equal(classify({status:'完了',receipt:{execution_status:'failed'}}).owner,'done');
+const rows=list([{id:'a',...waiting,due_date:'2026-10-27'},{id:'b',...waiting,due_date:'2026-10-25'},{id:'c',status:'完了'}],'2026-10-26');
+assert.equal(rows.length,2);assert.equal(rows[0].task.id,'b');assert.equal(rows[0].risk,'期限超過');
+assert.equal(classify({...waiting,blocker:'キーチェーンの解除待ち。認証を確認'}).owner,'ai');
+assert.equal(classify({...waiting,blocker:'本人操作は不要'}).owner,'unknown');
+assert.equal(list([{id:'bad',...waiting,due_date:'2026-02-31'}],'2026-10-26')[0].due,null);
+console.log('Action center: 15 ownership, quality, stale-state and deadline assertions passed');

@@ -449,7 +449,7 @@ class Handler(BaseHTTPRequestHandler):
                 filename='index.html' if self.authorized() else 'login.html'
                 html=(ROOT/'static'/filename).read_text().replace('__CSRF_TOKEN__',self.server.desk.token)
                 return self.send_data(200,html,'text/html; charset=utf-8')
-            allowed={'/viewport.js':'application/javascript; charset=utf-8','/request_summary.js':'application/javascript; charset=utf-8','/deadlines.js':'application/javascript; charset=utf-8','/voice.js':'application/javascript; charset=utf-8','/app.js':'application/javascript; charset=utf-8','/login.js':'application/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}
+            allowed={'/action_center.js':'application/javascript; charset=utf-8','/viewport.js':'application/javascript; charset=utf-8','/request_summary.js':'application/javascript; charset=utf-8','/deadlines.js':'application/javascript; charset=utf-8','/voice.js':'application/javascript; charset=utf-8','/app.js':'application/javascript; charset=utf-8','/login.js':'application/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}
             if route in allowed:return self.send_data(200,(ROOT/'static'/route[1:]).read_bytes(),allowed[route])
             self.send_data(404,{'error':'ページが見つかりません。'})
         except (OSError,sqlite3.Error,ValueError):self.send_data(500,{'error':'情報を読み込めませんでした。再読み込みしてください。'})
