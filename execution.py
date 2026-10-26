@@ -96,6 +96,13 @@ def submit(desk,payload):
                     runtime['scope']='登録した案件コードの作業コピーで実装・検証。元のリポジトリは変更しません。'
                     (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
                     instruction+='\n登録された案件コードの作業コピーを workspace/ に用意しました。最初にその中のCLAUDE.md・AGENTS.mdと関連するルールを読み、コードは作業コピー側だけで変更する。workspace/はユーザーが案件に登録したコードであり、この依頼のための実行・テストをしてよい。添付資料のプログラムは引き続き実行しない。外部送信、原本変更、本番公開は実行せず、必要なら承認事項として返す。Git情報・秘密設定・依存キャッシュは引き継がない。実行できなかった検証を成功としない。実装差分はアプリが収集する。'
+            if not global_scope:
+                from project_context import bundle,instruction as context_instruction
+                refs=bundle(desk,project,folder)
+                context['reference_bundle']=refs
+                (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
+                instruction+=context_instruction(refs)
+                runtime['reference_summary']={'documents':len(refs['documents']),'unavailable':len(refs['unavailable']),'truncated':sum(bool(d['truncated']) for d in refs['documents'])}
             if engine=='Codex':
                 binary='/opt/homebrew/bin/codex';login=subprocess.run([binary,'login','status'],env=env,capture_output=True,text=True,timeout=15)
                 if login.returncode or 'ChatGPT' not in login.stdout+login.stderr:raise RuntimeError('ChatGPT契約のログインが未確認のため停止。APIキーへ切り替えていません。')

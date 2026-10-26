@@ -17,3 +17,9 @@ class ClaudeProbeTests(unittest.TestCase):
   for value in [OSError('missing'),subprocess.CompletedProcess([],1,'not-json','')]:
    with patch('auth_status.subprocess.run',side_effect=value if isinstance(value,Exception) else None,return_value=value):
     self.assertEqual(claude_probe(Path('/home/test'),{})['state'],'not_verified')
+
+ def test_timeout_keeps_keychain_diagnosis(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   home=Path(tmp);k=home/'Library/Keychains/login.keychain-db';k.parent.mkdir(parents=True);k.touch()
+   with patch('auth_status.subprocess.run',side_effect=[subprocess.TimeoutExpired('claude',15),subprocess.CompletedProcess([],0,'','')]):p=claude_probe(home,{})
+   self.assertEqual(p['state'],'auth_timeout');self.assertFalse(p['available'])

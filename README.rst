@@ -96,3 +96,13 @@ The AI works inside the request's copy under the existing Codex workspace-write 
 Claude authentication diagnostics now distinguish a confirmed subscription login from an unverified status or an inaccessible Keychain in the background context. No credentials or account identities are exported, no password is requested by the app, and no API-key fallback is introduced. An inaccessible Keychain remains unresolved until the Mac mini's local access is established.
 
 Registered-code reviewers may run tests only inside the copied workspace under the read-only sandbox, with Python bytecode writes disabled. Uploaded programs remain excluded from execution. Hosts provide copy/change checks, while successful runtime checks require structured CLI command events rather than model prose. If a test needs writes, dependencies, external access or unavailable tools, verification remains incomplete.
+
+案件資料の引継ぎ
+----------------
+
+選択案件のローカル台帳と実行基準、登録されたコードのCLAUDE.md・AGENTS.mdを、各AIへ本文の抜粋として渡します。別端末の参照先は同名のローカルファイルで代用しません。1資料16KB、合計48KB、8資料まで。取得日時・更新時刻・抜粋ハッシュ・全文未読・未取得を記録します。既知の鍵・トークン形式は伏せますが、秘密情報の完全検出を保証するものではありません。認証ファイルや記憶全体を収集する仕組みはありません。
+
+検証の限界
+----------
+
+Codexの隔離環境でソケットの作成が制限される場合、HTTPサーバーを使用するテストは実行できません。CLIの終了コード0と全テスト成功は同じではありません。登録したコードの原本不変と、モデル側の実行結果、ホスト側の回帰検証を区別してください。

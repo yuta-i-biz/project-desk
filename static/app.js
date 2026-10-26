@@ -69,7 +69,7 @@ function verificationPanel(receipt){
  const box=E('details',{class:'supporting-files'},E('summary',{},'品質確認・作業範囲：'+(labels[review?.status]||'未確認')));
  if(review){box.append(E('p',{},review.summary||''));for(const c of review.checks||[])box.append(E('p',{},c.file+'：'+c.observation));if(review.scope)box.append(E('small',{},review.scope));}
  if(receipt.workspace){box.append(E('p',{},receipt.workspace.summary));if(receipt.workspace.changed_files?.length)box.append(E('p',{},'変更したファイル：'+receipt.workspace.changed_files.join('、')));}
- if(receipt.runtime){box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
+ if(receipt.runtime){const refs=receipt.runtime.reference_summary;if(refs)box.append(E('p',{},'引き継いだ資料：'+refs.documents+'件の抜粋 / 未取得 '+refs.unavailable+'件 / 全文未読 '+refs.truncated+'件'));box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
  return box;
 }
 function renderResults(){

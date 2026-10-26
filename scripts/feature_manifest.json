@@ -21,5 +21,14 @@
     "unverified",
     "needs_check",
     "担当・次の一手を確認"
+  ],
+  "execution.py": [
+    "reference_bundle",
+    "context_instruction"
+  ],
+  "project_context.py": [
+    "別端末の参照先は読み取りません",
+    "MAX_TOTAL",
+    "truncated"
   ]
 }

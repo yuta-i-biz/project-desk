@@ -14,7 +14,9 @@ def claude_probe(home,env=None):
         if not isinstance(auth,dict):return result
         if r.returncode==0 and auth.get('loggedIn') and auth.get('authMethod') in ('claude.ai','claudeai','oauth'):
             return {'engine':'Claude Code','available':True,'state':'connected','detail':'Claude契約のログインを確認済み'}
-    except (OSError,ValueError,subprocess.TimeoutExpired):return result
+    except subprocess.TimeoutExpired:
+        result.update(state='auth_timeout',detail='Claudeの認証確認が時間切れです。ログアウトと決めつけず、Mac miniの画面側でアクセス確認が出ていないか確認してください。')
+    except (OSError,ValueError):return result
     keychain=home/'Library/Keychains/login.keychain-db'
     if keychain.exists():
         try:
