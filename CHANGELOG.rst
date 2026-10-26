@@ -38,3 +38,10 @@ Funnel接続の準備
 * 利用者の指定によりTailscale Funnelを接続候補として追加。
 * 専用認証口のみ転送し、既存の別サービスがある場合は停止する。
 * tailnet管理者によるFunnel有効化を検出。管理者操作待ちで、外部接続の検証は未完了。
+
+Authenticated remote access verified
+------------------------------------
+
+* Enabled Tailscale Funnel on the Mac mini runtime.
+* Verified public HTTPS login, protected project and artifact endpoints, and Secure/HttpOnly cookies.
+* Updated mobile connection guidance; physical phone voice testing remains pending.
