@@ -1,0 +1,25 @@
+{
+  "static/index.html": [
+    "data-view=\"chat\"",
+    "data-view=\"global\"",
+    "data-view=\"deadlines\"",
+    "data-view=\"results\"",
+    "data-view=\"actions\"",
+    "/voice.js",
+    "/viewport.js",
+    "/action_center.js"
+  ],
+  "static/app.js": [
+    "chat-composer",
+    "chat-input",
+    "renderActionCenter",
+    "該当画面・成果物を開く",
+    "beginChat"
+  ],
+  "static/action_center.js": [
+    "execution_status",
+    "unverified",
+    "needs_check",
+    "担当・次の一手を確認"
+  ]
+}
