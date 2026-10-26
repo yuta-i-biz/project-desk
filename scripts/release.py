@@ -15,7 +15,7 @@ buf=io.BytesIO()
 with tarfile.open(fileobj=buf,mode='w:gz') as archive:
  for name in files:archive.add(root/name,arcname=name,recursive=False)
  data=json.dumps(manifest).encode();info=tarfile.TarInfo('release-manifest.json');info.size=len(data);archive.addfile(info,io.BytesIO(data))
-remote=r'''import datetime,hashlib,io,json,os,pathlib,signal,sqlite3,subprocess,sys,tarfile,tempfile,time,urllib.request,shutil
+remote=r'''import datetime,hashlib,io,json,os,pathlib,re,signal,sqlite3,subprocess,sys,tarfile,tempfile,time,urllib.request,shutil
 root=pathlib.Path.home()/'Documents/Codex/project-desk'
 stage=pathlib.Path(tempfile.mkdtemp(prefix='.project-desk-release-',dir=root.parent))
 archive=tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read()),mode='r:gz')
@@ -77,8 +77,11 @@ try:
  if not healthy:raise RuntimeError('New version failed health check')
  for name,expected in m['hashes'].items():
   if name.startswith('static/'):
-   with urllib.request.urlopen('http://127.0.0.1:18765/'+name.split('/',1)[1],timeout=5) as response:
-    if hashlib.sha256(response.read()).hexdigest()!=expected:raise RuntimeError('Served content mismatch: '+name)
+   url='http://127.0.0.1:18765/'+('' if name=='static/index.html' else name.split('/',1)[1])
+   with urllib.request.urlopen(url,timeout=5) as response:
+    body=response.read()
+    if name=='static/index.html':body=re.sub(rb'(<meta name="desk-token" content=")[^"]*(")',rb'\1__CSRF_TOKEN__\2',body)
+    if hashlib.sha256(body).hexdigest()!=expected:raise RuntimeError('Served content mismatch: '+name)
  if digest(root/'data/access.json')!=access_hash:raise RuntimeError('Access settings unexpectedly changed')
  for name,expected in m['hashes'].items():
   if digest(root/name)!=expected:raise RuntimeError('Live source mismatch: '+name)
