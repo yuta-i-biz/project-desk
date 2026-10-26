@@ -69,7 +69,7 @@ function verificationPanel(receipt){
  const box=E('details',{class:'supporting-files'},E('summary',{},'品質確認・作業範囲：'+(labels[review?.status]||'未確認')));
  if(review){box.append(E('p',{},review.summary||''));for(const c of review.checks||[])box.append(E('p',{},c.file+'：'+c.observation));if(review.scope)box.append(E('small',{},review.scope));}
  if(receipt.workspace){box.append(E('p',{},receipt.workspace.summary));if(receipt.workspace.changed_files?.length)box.append(E('p',{},'変更したファイル：'+receipt.workspace.changed_files.join('、')));}
- if(receipt.runtime){const refs=receipt.runtime.reference_summary;if(refs)box.append(E('p',{},'引き継いだ資料：'+refs.documents+'件の抜粋 / 未取得 '+refs.unavailable+'件 / 全文未読 '+refs.truncated+'件'));box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
+ if(receipt.runtime){if(receipt.runtime.scoped_google_tools)box.append(E('p',{},'Google資料の接続：今回の依頼文にある資料だけを読取り。更新機能はこの接続に含みません。'));if(receipt.runtime.autonomous_draft)box.append(E('p',{},'承認済みの自動工程：外部MCPツールを無効にして調査・下書きを実行。'));if(receipt.runtime.claude_execution_route)box.append(E('p',{},'Claude起動経路：'+(receipt.runtime.claude_execution_route==='desktop_session'?'Mac miniの画面側':'背景処理')));const refs=receipt.runtime.reference_summary;if(refs)box.append(E('p',{},'引き継いだ資料：'+refs.documents+'件の抜粋 / 未取得 '+refs.unavailable+'件 / 全文未読 '+refs.truncated+'件'));box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
  return box;
 }
 function renderResults(){
@@ -230,5 +230,26 @@ function renderActionCenter(){
   for(const row of items){const t=row.task,p=projectById(t.project_id);section.append(E('article',{class:'task-card'},E('small',{},p.company+' / '+p.name),E('h3',{},window.DeskRequestSummary.title(t)),E('p',{},row.reason),E('p',{},'次の一手: '+(t.next_action||'案件の記録から確認')),E('small',{},row.risk+(row.due?' · '+row.due:'')+' / 更新 '+date(t.updated,true)),E('div',{class:'task-actions'},E('button',{class:'primary',onclick:()=>openWaitingTask(t)},'該当画面・成果物を開く ↗'),E('button',{class:'secondary',onclick:()=>beginChat(t.project_id,t)},'このタスクについて指示'))));}
   wrap.append(section);
  }
+ renderWorkflowPlans(wrap);
  clear($('#content'),wrap);$('#visible-count').textContent='未完了 '+rows.length+'件 / 取得済み記録の範囲';
+}
+
+function newWorkflowPlan(){
+ const projects=state.data.projects.filter(p=>!p.reference_only);
+ openForm('連続する調査・下書きの工程を作る',[field('project_id','案件','select',projects[0]?.id||'',projects.map(p=>[p.id,p.company+' / '+p.name])),field('title','工程の名前'),field('kind','作業の種類','select','draft',[['draft','新規の下書き'],['analysis','読取り調査・分析']]),field('steps','一行に「依頼 | 完了条件」を入力（最大8工程）','textarea','',null,'工程案を保存した後、内容を確認して開始します。送信・原本変更・本番公開・金銭や人事判断は対象外です。')],async v=>{
+ const steps=v.steps.split('\n').filter(x=>x.trim()).map(line=>{const at=line.indexOf('|');if(at<1)throw new Error('各行に「依頼 | 完了条件」を入力してください。');return {kind:v.kind,prompt:line.slice(0,at).trim(),criteria:line.slice(at+1).trim()};});
+ await api('/api/workflows/create',{project_id:v.project_id,title:v.title,steps});await load();toast('工程案を保存しました。内容を確認してから開始してください。');},'工程案を保存');
+}
+function renderWorkflowPlans(wrap){
+ const labels={draft:'開始前・内容を確認',active:'承認済み・順番に進行',paused:'停止中',held:'確認が必要・自動再実行なし',complete:'工程完了・成果物を確認',pending:'順番待ち',dispatching:'受付を確認中',running:'実行・検品中',done:'工程の検品済み'};
+ const section=E('section',{class:'overview-project'},E('h2',{},'連続する調査・下書き'),E('p',{},'承認した工程だけを順番に進めます。前工程の実行と独立検品が通らなければ停止します。Mac miniの稼働が必要です。'),E('button',{class:'primary',onclick:newWorkflowPlan},'＋ 工程案を作る'));
+ const action=async(path,payload)=>{try{await api(path,payload);await load();}catch(e){toast(e.message);}};
+ for(const plan of state.data.workflows||[]){const p=projectById(plan.project_id);if(!p||!matching(p))continue;
+  const card=E('article',{class:'task-card'},E('small',{},p.company+' / '+p.name),E('h3',{},plan.title),E('p',{},labels[plan.state]||plan.state));
+  for(const step of plan.steps){card.append(E('p',{},String(step.position+1)+'. '+step.prompt),E('small',{},'完了条件：'+step.criteria+' / '+(labels[step.state]||step.state)));if(step.reason)card.append(E('p',{},step.reason));if(step.task_id)card.append(E('a',{href:'?view=results&task='+encodeURIComponent(step.task_id),class:'text-button'},'工程の結果を見る ↗'));}
+  if(plan.state==='draft')card.append(E('button',{class:'primary',onclick:()=>action('/api/workflows/approve',{id:plan.id,confirmed:true})},'この工程・完了条件で開始する'));
+  if(['draft','active'].includes(plan.state))card.append(E('button',{class:'secondary',onclick:()=>action('/api/workflows/pause',{id:plan.id})},'次の工程を止める'));
+  section.append(card);
+ }
+ wrap.prepend(section);
 }

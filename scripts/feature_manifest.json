@@ -14,7 +14,8 @@
     "chat-input",
     "renderActionCenter",
     "該当画面・成果物を開く",
-    "beginChat"
+    "beginChat",
+    "この工程・完了条件で開始する"
   ],
   "static/action_center.js": [
     "execution_status",
@@ -30,5 +31,21 @@
     "別端末の参照先は読み取りません",
     "MAX_TOTAL",
     "truncated"
+  ],
+  "workflows.py": [
+    "dispatching",
+    "reviewed",
+    "confirmed",
+    "held"
+  ],
+  "claude_bridge.py": [
+    "desktop_session",
+    "O_EXCL",
+    "interrupted"
+  ],
+  "tool_gateway.py": [
+    "READ_TOOLS",
+    "この案件の明示された資料",
+    "enabled=false"
   ]
 }

@@ -303,7 +303,8 @@ class Desk:
         health={'sources':[{k:v for k,v in h.items() if k!='rows'} for h in health_sources], 'rows':health_rows}
         from attachments import public_records
         from chat_schedule import overlay
-        return {**base,'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        from workflows import plans
+        return {**base,'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),
@@ -498,6 +499,14 @@ class Handler(BaseHTTPRequestHandler):
                     from auth_status import refresh
                     refresh(self.server.desk.data,self.server.desk.home)
                 self.server.desk.collect(force=True);return self.send_data(200,{'ok':True})
+            if route in ('/api/workflows/create','/api/workflows/approve','/api/workflows/pause'):
+                if not read_json(self.server.desk.data/'node.json',{}).get('enable_user_requests'):
+                    return self.send_data(503,{'error':'この端末ではAI実行を有効にしていません。'})
+                if not isinstance(payload,dict):raise ValueError('工程の入力内容を確認してください。')
+                from workflows import create,approve,pause
+                desk=self.server.desk
+                result=create(desk,payload) if route.endswith('/create') else approve(desk,payload) if route.endswith('/approve') else pause(desk,payload.get('id'))
+                return self.send_data(200,result)
             if route=='/api/run':
                 if not read_json(self.server.desk.data/'node.json',{}).get('enable_user_requests'):
                     return self.send_data(503,{'error':'AI実行はMac miniへの移行後に有効になります。'})
@@ -535,6 +544,9 @@ def main():
         private_server.desk=desk;private_server.remote_access=True
         threading.Thread(target=private_server.serve_forever,daemon=True).start()
     stop_sync=threading.Event()
+    if read_json(desk.data/'node.json',{}).get('enable_user_requests'):
+        from workflows import loop
+        threading.Thread(target=loop,args=(desk,stop_sync),daemon=True).start()
     if (desk.data/'mac_mini.json').exists():
         from sync_mac_mini import sync
         def refresh_remote():

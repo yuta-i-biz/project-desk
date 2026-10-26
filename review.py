@@ -54,7 +54,9 @@ def run(folder,prompt,job,engines,env,files):
   binary='/opt/homebrew/bin/codex'
   auth=subprocess.run([binary,'login','status'],env=env,capture_output=True,text=True,timeout=15)
   if auth.returncode or 'ChatGPT' not in auth.stdout+auth.stderr:return {**result,'summary':'検品用AIの契約ログインを確認できず、検品は未実施です。','error_stage':'auth'}
-  command=[binary,'--ask-for-approval','never','exec','--sandbox','read-only','--skip-git-repo-check','--ephemeral','--json']
+  from tool_gateway import disabled_mcp_config
+  tool_config=disabled_mcp_config(binary,env) if job.get('autonomous') else []
+  command=[binary,*tool_config,'--ask-for-approval','never','exec','--sandbox','read-only','--skip-git-repo-check','--ephemeral','--json']
   for name in images:command.extend(['--image',str(folder/name)])
   command.extend(['--output-schema',str(schema),'--output-last-message',str(output),'-'])
   with (cache/'cli.log').open('w') as log:
@@ -85,4 +87,4 @@ def run(folder,prompt,job,engines,env,files):
    tests=successful_tests(cache/'cli.log')
    if not tests:return {**result,'summary':'別プロセスによるテストの実行記録がなく、検証は未完了です。','checks':checks,'independent':True,'error_stage':'runtime_tests'}
   return {'tests':tests,'status':review['status'],'summary':review['summary'][:2000],'checks':checks,'independent':True,'engine':'Codex','input_images':[{'file':name,'sha256':before[name],'source':'cli_image_attachment'} for name in images],'scope':'別プロセスによる読み取り専用の検品。記録されたテスト以外の検証や、正しさ全体を保証するものではありません。'}
- except (OSError,ValueError,TypeError,subprocess.TimeoutExpired):return result
+ except (OSError,ValueError,TypeError,RuntimeError,subprocess.TimeoutExpired):return result

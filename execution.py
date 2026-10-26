@@ -7,7 +7,7 @@ import subprocess
 from scheduler import ProjectQueue
 from urllib.parse import quote
 POOL=ProjectQueue(max_workers=3)
-PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md','workspace_manifest.json'}
+PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md','workspace_manifest.json','tool_scope.json'}
 
 def environment(home):
     env=os.environ.copy();bins=sorted((home/'.nvm/versions/node').glob('*/bin'),reverse=True)
@@ -42,6 +42,9 @@ def submit(desk,payload):
     attached=attachment_context(desk,payload.get('attachment_ids',[]),pid,global_scope)
     engine,route_reason=choose(prompt,engines,requested,attached)
     job=profile(prompt,attached)
+    if payload.get('_autonomous') is True:
+        if requested!='Codex':raise ValueError('自動工程はCodexの専用フォルダ内で実行します。')
+        job={'kind':'analysis','requires':{'text'},'review_required':True,'autonomous':True}
     from runtime_profile import describe
     runtime=describe(desk.home,engine)
     task=desk.mutate('create',{'project_id':pid,'title':prompt.strip().splitlines()[0][:200],'next_action':prompt[:2000],**{k:payload[k] for k in ['due_date','start_date','effort_days','depends_on','deadline_reason','completion_criteria'] if k in payload}})
@@ -106,18 +109,31 @@ def submit(desk,payload):
             if engine=='Codex':
                 binary='/opt/homebrew/bin/codex';login=subprocess.run([binary,'login','status'],env=env,capture_output=True,text=True,timeout=15)
                 if login.returncode or 'ChatGPT' not in login.stdout+login.stderr:raise RuntimeError('ChatGPT契約のログインが未確認のため停止。APIキーへ切り替えていません。')
-                command=[binary,'--ask-for-approval','never','exec','--sandbox','workspace-write','--skip-git-repo-check','--json','--output-last-message',str(folder/'response.txt'),'-']
+                from tool_gateway import codex_config
+                if payload.get('_autonomous') is True:
+                    from tool_gateway import disabled_mcp_config
+                    tool_config=disabled_mcp_config(binary,env)
+                else:tool_config=codex_config(desk.home,folder,prompt)
+                runtime['scoped_google_tools']=bool(tool_config) and not payload.get('_autonomous',False)
+                runtime['autonomous_draft']=payload.get('_autonomous') is True
+                command=[binary,*tool_config,'--ask-for-approval','never','exec','--sandbox','workspace-write','--skip-git-repo-check','--json','--output-last-message',str(folder/'response.txt'),'-']
             elif engine=='Claude Code':
                 binary=str(desk.home/'.local/bin/claude')
                 from auth_status import claude_probe
-                auth=claude_probe(desk.home,env)
+                from claude_bridge import status as bridge_status
+                auth=bridge_status(desk.data) or claude_probe(desk.home,env)
                 if not auth['available']:raise RuntimeError(auth['detail'])
+                runtime['claude_execution_route']=auth.get('bridge','background')
                 # Leave edits subject to Claude Code's existing approval and hooks.
                 command=[binary,'-p','--output-format','json','--tools','Read,Glob,Grep,Write,Edit']
             else:
                 from gemini_adapter import command
                 command=command(desk.data.parent,folder)
-            with (folder/'cli.log').open('w') as log:process=subprocess.run(command,input=(json.dumps({'event':'user','message':{'content':instruction}},ensure_ascii=False)+'\n' if engine=='Gemini' else instruction),text=True,stdout=log,stderr=subprocess.STDOUT,cwd=folder,env=env,timeout=1200)
+            if engine=='Claude Code' and auth.get('bridge')=='desktop_session':
+                from claude_bridge import request as bridge_request
+                process=bridge_request(desk.data,task['id'],instruction)
+            else:
+                with (folder/'cli.log').open('w') as log:process=subprocess.run(command,input=(json.dumps({'event':'user','message':{'content':instruction}},ensure_ascii=False)+'\n' if engine=='Gemini' else instruction),text=True,stdout=log,stderr=subprocess.STDOUT,cwd=folder,env=env,timeout=1200)
             checks.append({'name':'CLI終了コード','value':str(process.returncode),'verified':process.returncode==0})
             if (folder/'response.txt').is_symlink():raise RuntimeError('結果本文の保存先が不正です。')
             if (folder/'response.txt').exists():

@@ -35,7 +35,8 @@ def refresh(data,home):
             available=r.returncode==0 and 'ChatGPT' in r.stdout+r.stderr
         except (OSError,ValueError,subprocess.TimeoutExpired):pass
         items.append({'engine':name,'available':bool(available),'detail':'契約ログイン確認済み' if available else 'ログインまたはキーチェーンの解除を確認してください'})
-    items.append(claude_probe(home,env))
+    from claude_bridge import status as bridge_status
+    items.append(bridge_status(data) or claude_probe(home,env))
     try:
         probe=json.loads((data/'gemini_probe.json').read_text())
         from gemini_adapter import binary
