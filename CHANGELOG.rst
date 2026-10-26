@@ -96,3 +96,9 @@ Manual project visibility fix
 * Fixed new manual projects being hidden by legacy-source filtering when a canonical company gantt exists.
 * Displayed company names in project selection and chat headers.
 * Reproduced the defect with a failing test, then verified all 37 Python tests and the live project deep link.
+
+2026-10-26 接続確認と成果物表示の改善
+---------------------------------------
+* サーバー再起動後も下書きを保持し、送信直前に同一サイトの接続確認情報を更新。確認失敗時は送信せず、二重送信もしない。
+* 長いPDF・画像の閲覧中も、ファイル名と閉じるボタンを上部に固定。
+* 古い接続情報、更新失敗、単回送信の自動検証と実画面のスクロール確認を実施。
