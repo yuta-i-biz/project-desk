@@ -52,5 +52,24 @@
     "date_match",
     "unclassified",
     "要人力"
+  ],
+  "runtime_ops.py": [
+    "last_exit",
+    "idle",
+    "unknown"
+  ],
+  "business_metrics.py": [
+    "予定売上",
+    "closed_confirmed",
+    "proposals"
+  ],
+  "self_growth.py": [
+    "SELF_GROWTH",
+    "original_unchanged",
+    "dispatching"
+  ],
+  "initiatives.py": [
+    "candidate_measures",
+    "施策効果は未検証"
   ]
 }

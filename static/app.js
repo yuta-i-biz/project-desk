@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s);
-const state={data:null,view:['results','actions'].includes(new URLSearchParams(location.search).get('view'))?new URLSearchParams(location.search).get('view'):'chat',focusTask:new URLSearchParams(location.search).get('task')||'',company:'',filter:'all',query:'',limit:40,detail:null,form:null,fetching:false};
-const labels={actions:'あなたの対応・AIの次の作業',global:'全案件を検索・相談',deadlines:'期限と遅れ',chat:'チャットと案件',overview:'全体の進み具合',health:'不具合の確認',results:'依頼の進捗・成果物',projects:'案件の現在地',tasks:'タスク一覧',unlinked:'会話・タスクを案件にまとめる',history:'作業の履歴'};
+const state={data:null,view:['results','actions','system'].includes(new URLSearchParams(location.search).get('view'))?new URLSearchParams(location.search).get('view'):'chat',focusTask:new URLSearchParams(location.search).get('task')||'',company:'',filter:'all',query:'',limit:40,detail:null,form:null,fetching:false};
+const labels={system:'システム・会社の数値',actions:'あなたの対応・AIの次の作業',global:'全案件を検索・相談',deadlines:'期限と遅れ',chat:'チャットと案件',overview:'全体の進み具合',health:'不具合の確認',results:'依頼の進捗・成果物',projects:'案件の現在地',tasks:'タスク一覧',unlinked:'会話・タスクを案件にまとめる',history:'作業の履歴'};
 function E(tag,attrs={},...children){const n=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='class')n.className=v;else if(k==='style')n.style.cssText=v;else if(k.startsWith('on'))n.addEventListener(k.slice(2),v);else if(v!==null&&v!==undefined)n.setAttribute(k,v);}for(const c of children.flat(Infinity)){if(c!==null&&c!==undefined)n.append(c instanceof Node?c:document.createTextNode(String(c)));}return n;}
 function clear(el,...children){el.replaceChildren(...children);}
 function toast(text){const el=$('#toast');el.textContent=text;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,3500);}
@@ -69,7 +69,7 @@ function verificationPanel(receipt){
  const box=E('details',{class:'supporting-files'},E('summary',{},'品質確認・作業範囲：'+(labels[review?.status]||'未確認')));
  if(review){box.append(E('p',{},review.summary||''));for(const c of review.checks||[])box.append(E('p',{},c.file+'：'+c.observation));if(review.scope)box.append(E('small',{},review.scope));}
  if(receipt.workspace){box.append(E('p',{},receipt.workspace.summary));if(receipt.workspace.changed_files?.length)box.append(E('p',{},'変更したファイル：'+receipt.workspace.changed_files.join('、')));}
- if(receipt.runtime){if(receipt.runtime.scoped_google_tools)box.append(E('p',{},'Google資料の接続：今回の依頼文にある資料だけを読取り。更新機能はこの接続に含みません。'));if(receipt.runtime.autonomous_draft)box.append(E('p',{},'承認済みの自動工程：外部MCPツールを無効にして調査・下書きを実行。'));if(receipt.runtime.claude_execution_route)box.append(E('p',{},'Claude起動経路：'+(receipt.runtime.claude_execution_route==='desktop_session'?'Mac miniの画面側':'背景処理')));const refs=receipt.runtime.reference_summary;if(refs)box.append(E('p',{},'引き継いだ資料：'+refs.documents+'件の抜粋 / 未取得 '+refs.unavailable+'件 / 全文未読 '+refs.truncated+'件'));box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
+ if(receipt.runtime){if(receipt.runtime.scoped_google_tools)box.append(E('p',{},'Google資料の接続：今回の依頼文にある資料だけを読取り。更新機能はこの接続に含みません。'));if(receipt.runtime.autonomous_draft)box.append(E('p',{},receipt.runtime.self_improvement?'自律改善：外部MCPツールを無効にして登録コードの作業コピーで検証。本番反映なし。':'承認済みの自動工程：外部MCPツールを無効にして調査・下書きを実行。'));if(receipt.runtime.claude_execution_route)box.append(E('p',{},'Claude起動経路：'+(receipt.runtime.claude_execution_route==='desktop_session'?'Mac miniの画面側':'背景処理')));if(receipt.runtime.rules_fingerprint)box.append(E('p',{},'渡した共通・案件ルールの版：'+receipt.runtime.rules_fingerprint.slice(0,16)));const refs=receipt.runtime.reference_summary;if(refs)box.append(E('p',{},'引き継いだ資料：'+refs.documents+'件の抜粋 / 未取得 '+refs.unavailable+'件 / 全文未読 '+refs.truncated+'件'));box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
  return box;
 }
 function renderResults(){
@@ -173,6 +173,8 @@ function renderDeadlines(){
 
 function scheduleFields(t={}){return [field('due_date','期日','date',t.due_date||''),field('start_date','開始予定日','date',t.start_date||''),field('effort_days','所要日数','text',t.effort_days||'',null,'未確定のときは空欄。勝手に期日は決めません。'),field('depends_on','先に終える作業','select',t.depends_on||'',[['','前工程なし・未確定'],...state.data.tasks.filter(x=>!x.read_only&&x.project_id===t.project_id&&x.id!==t.id).map(x=>[x.id,x.title])]),field('deadline_reason','期日未設定の理由・確認先','text',t.deadline_reason||''),field('completion_criteria','何をもって完了とするか','textarea',t.completion_criteria||'')];}
 
+const beforeSystemInsights=renderContent;
+renderContent=function(){if(state.view==='system'){document.body.classList.remove('chat-mode');renderSystemInsights();}else beforeSystemInsights();};
 let bulkDraft=[];
 function openBulkRequests(){
  const projects=state.data.projects.filter(p=>!p.reference_only);if(!bulkDraft.length)bulkDraft.push({project_id:chatDraft.project||projects[0]?.id||'',prompt:'',sent:false});
@@ -283,3 +285,41 @@ function renderAutonomy(wrap){
  }
  section.append(meetings);wrap.prepend(section);
 }
+
+function renderSystemInsights(){
+ const wrap=E('div',{class:'overview-wrap'}),g=state.data.self_growth||{},ops=state.data.runtime_ops||{};
+ const growth=E('section',{class:'overview-project'},E('h2',{},'システム自身の改善'),E('p',{},g.enabled?'作業コピーでの自律改善が有効です。':'自律改善の実行設定は無効です。'),E('p',{},g.scope||'登録コードの作業コピーで検証します。'));
+ const states={dispatching:'受付を確認中',running:'調査・修正・検品中',ready:'検品済み・反映判断待ち',held:'停止・確認が必要',resolved:'確認済み'};
+ for(const run of g.runs||[]){const card=E('article',{class:'task-card'},E('h3',{},states[run.state]||run.state),E('p',{},run.reason),E('small',{},date(run.created,true)));if(run.task_id)card.append(E('a',{href:'?view=results&task='+encodeURIComponent(run.task_id)},'差分・検証結果を見る ↗'));if(['ready','held'].includes(run.state))card.append(E('button',{class:'secondary',onclick:async()=>{try{await api('/api/self-growth/resolve',{fingerprint:run.fingerprint});await load();}catch(e){toast(e.message);}}},'確認済みにする（本番反映はしない）'));growth.append(card);}
+ wrap.append(growth);
+ const processes=autonomyDetails('runtime_ops','定期処理・接続の稼働状況 · '+(ops.rows||[]).length+'件');processes.className='overview-project';processes.append(E('p',{},ops.scope||'監視記録は未取得です。'),E('small',{},'取得 '+date(ops.captured_at,true)));
+ const age=Date.now()-new Date(ops.captured_at).getTime();if(!Number.isFinite(age)||age>180000||age<0)processes.append(E('p',{},'監視記録が古いか未取得です。現在稼働しているとは断定できません。'));
+ for(const job of ops.rows||[]){const status={running:'実行中',idle:'待機中',failed:'前回の終了番号が異常',unknown:'状態未確認'}[job.status]||'状態未確認';processes.append(E('article',{class:'task-card'},E('h3',{},job.name),E('strong',{},status),E('p',{},'前回の終了番号：'+(job.last_exit??'未取得')+' / ログ更新：'+date(job.last_log_update,true)),E('small',{},'起動タイミング：'+scheduleDescription(job.schedule||{})),E('p',{},job.missing_files?.length?'見つからない起動ファイル：'+job.missing_files.join('・'):''),E('p',{},job.next_action||''),E('p',{class:'subtle'},job.note)));}
+ wrap.append(processes);
+ const metrics=E('section',{class:'overview-project'},E('h2',{},'モノ・ループの数値と改善候補'),E('p',{},'集計期間・指標定義・取得範囲を分けて表示します。未取得はゼロではありません。'));
+ for(const company of state.data.business_metrics?.companies||[]){if(state.company&&company.company!==state.company)continue;
+  const card=E('article',{class:'task-card'},E('h3',{},company.company),E('p',{},({observed:'参照範囲の集計',missing:'参照元未登録',error:'取得または定義の確認が必要',stale:'更新が古い数値'}[company.state]||company.state)));
+  if(company.detail)card.append(E('p',{},company.detail));
+  if(company.state==='stale')card.append(E('p',{},'以下は前回取得値です。最新の改善判定には使いません。'));
+  for(const period of company.periods||[]){card.append(E('h4',{},period.period+(period.partial?'（月途中）':'（確定状態未確認）')),E('p',{},period.definition));if(period.status!=='observed')card.append(E('p',{},'重複や不正な値があるため集計を非表示にしています。'));for(const [metric,value]of Object.entries(period.values||{}))card.append(E('p',{},metric+'：'+new Intl.NumberFormat('ja-JP').format(value)+(metric==='買取件数'?'件':'円')));}
+  if(company.cohort){const c=company.cohort;card.append(E('h4',{},'同じ店舗・経路での比較：'+c.before+' → '+c.after),E('p',{},c.definition),E('p',{},'比較対象 '+c.pairs+'組 / 予定利益が減った組 '+c.negative_pairs+'組'),E('p',{},'改善の検討順：予定利益が減った組から、施策の実施日・実施量・費用・結果を照合します。'));
+   for(const loss of c.largest_decreases||[])card.append(E('small',{},loss.store+' / '+loss.channel+' / 予定利益差 '+new Intl.NumberFormat('ja-JP').format(loss.planned_profit_change)+'円'),E('br'));
+  }
+  for(const proposal of company.proposals||[])card.append(E('h4',{},'改善の検討候補：'+proposal.title),E('p',{},proposal.reason));
+  if(company.source_url&&/^https:\/\/docs\.google\.com\/spreadsheets\/d\//.test(company.source_url))card.append(E('a',{href:company.source_url,target:'_blank',rel:'noopener'},'数値の参照元を開く ↗'));
+  if(company.range)card.append(E('small',{},' / '+company.range+' / 取得 '+date(company.captured_at,true)),E('p',{class:'subtle'},company.coverage));metrics.append(card);
+ }
+ wrap.insertBefore(metrics,processes);
+ const initiatives=state.data.initiatives||{},list=E('section',{class:'overview-project'},E('h2',{},'MLの施策と、確かめるべき成果'),E('p',{},initiatives.scope||''),E('p',{},initiatives.caution||''));
+ const initiativeRows=(initiatives.rows||[]).filter(row=>{const p=projectById(row.project_id);return p&&matching(p);});
+ for(const row of initiativeRows.slice(0,state.limit)){const p=projectById(row.project_id);
+ const card=E('article',{class:'task-card'},E('h3',{},row.title),E('p',{},'未完了 '+row.open_tasks+'件 / 確認待ち・保留 '+row.waiting_tasks+'件'),E('p',{},row.assessment));
+ if(row.planned_start)card.append(E('p',{},'計画上の開始：'+row.planned_start+'（実施済みを示しません）'));
+ if(row.candidate_measures.length)card.append(E('p',{},'検証指標の候補：'+row.candidate_measures.join('・')));
+ card.append(E('button',{class:'secondary',onclick:()=>beginChat(p.id)},'この施策の検証を相談'));list.append(card);
+ }
+ more(list,initiativeRows.length);wrap.append(list);const error=state.data.insights_error;if(error?.detail)wrap.prepend(E('p',{},error.detail+' / '+date(error.captured_at,true)));
+ clear($('#content'),wrap);$('#visible-count').textContent='監視・数値・改善は取得記録の範囲';
+}
+
+function scheduleDescription(s){const parts=[];const calendars=Array.isArray(s.StartCalendarInterval)?s.StartCalendarInterval:s.StartCalendarInterval?[s.StartCalendarInterval]:[];for(const t of calendars){const hour=t.Hour===undefined?'毎時':String(t.Hour).padStart(2,'0')+'時';parts.push((t.Weekday===undefined?'':(['日','月','火','水','木','金','土'][t.Weekday%7]+'曜 '))+hour+(t.Minute===undefined?'':String(t.Minute).padStart(2,'0')+'分'));}if(s.StartInterval)parts.push(s.StartInterval+'秒ごと');if(s.KeepAlive)parts.push('常駐・条件付き再起動');if(s.RunAtLoad)parts.push('ログイン・登録時');return parts.join(' / ')||'起動条件は未確認';}

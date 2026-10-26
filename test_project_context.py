@@ -23,6 +23,12 @@ class ContextTests(unittest.TestCase):
   source=self.home/'code';source.mkdir();(source/'CLAUDE.md').write_text('project-only rule');subprocess.run(['git','init','-q',str(source)],check=True)
   data=self.home/'data';data.mkdir();(data/'workspace_sources.json').write_text(json.dumps({'p':{'source':str(source),'mode':'copy','registered_locally':True}}));self.desk.data=data
   r=bundle(self.desk,{'id':'p'},self.folder);self.assertEqual(r['documents'][0]['text'],'project-only rule')
+ def test_common_and_gemini_rules_and_version(self):
+  common=self.home/'.claude/CLAUDE.md';common.parent.mkdir(exist_ok=True);common.write_text('same common rules')
+  w=self.folder/'workspace';w.mkdir();(w/'GEMINI.md').write_text('Gemini project rule')
+  first=bundle(self.desk,{},self.folder);self.assertEqual([d['kind'] for d in first['documents']],['common_rules','registered_project_rules'])
+  self.assertEqual(first['rules_fingerprint'],bundle(self.desk,{},self.folder)['rules_fingerprint'])
+  common.write_text('updated common rules');self.assertNotEqual(first['rules_fingerprint'],bundle(self.desk,{},self.folder)['rules_fingerprint'])
  def test_secret_patterns_removed(self):
   text='api_key: fake-value\npassword = fake-password\n-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\nordinary text';safe=redact(text);self.assertNotIn('fake',safe);self.assertIn('ordinary text',safe)
 
@@ -35,6 +41,7 @@ class ProviderContextTests(unittest.TestCase):
   for engine in ('Codex','Claude Code','Gemini'):
    with self.subTest(engine=engine),tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp);home=root/'home';ledger=home/'.claude/runtime/ledger/Test';ledger.mkdir(parents=True)
+    (home/'.claude/CLAUDE.md').write_text('SHARED_POLICY_REFERENCE')
     (ledger/'sample.md').write_text('## 目的\nSELECTED_PROJECT_REFERENCE\n## 次アクション\n比較する\n')
     d=Desk(home,root/'data');pid=d.snapshot()['projects'][0]['id'];(d.data/'engines.json').write_text(json.dumps([{'engine':engine,'available':True}]))
     inputs=[]
@@ -43,4 +50,4 @@ class ProviderContextTests(unittest.TestCase):
      inputs.append(kw['input']);(kw['cwd']/'response.txt').write_text('検証用の回答');return subprocess.CompletedProcess(command,0)
     with patch.object(execution.POOL,'submit',side_effect=lambda fn,**kw:fn()),patch.object(execution.subprocess,'run',side_effect=runner),patch('auth_status.claude_probe',return_value={'available':True}),patch('gemini_adapter.command',return_value=['mock-gemini']),patch('gemini_adapter.response',return_value='検証用の回答'):
      result=execution.submit(d,{'project_id':pid,'engine':engine,'prompt':'案件資料を要約してください'})
-    self.assertEqual(len(inputs),1);self.assertIn('SELECTED_PROJECT_REFERENCE',inputs[0]);self.assertIn('truncated',inputs[0]);context=json.loads((d.data/'requests'/result['task_id']/'project_context.json').read_text());self.assertEqual(context['reference_bundle']['documents'][0]['kind'],'project_ledger')
+    self.assertEqual(len(inputs),1);self.assertIn('SELECTED_PROJECT_REFERENCE',inputs[0]);self.assertIn('SHARED_POLICY_REFERENCE',inputs[0]);self.assertIn('truncated',inputs[0]);context=json.loads((d.data/'requests'/result['task_id']/'project_context.json').read_text());self.assertIn('project_ledger',[d['kind'] for d in context['reference_bundle']['documents']]);self.assertEqual(len(context['reference_bundle']['rules_fingerprint']),64)

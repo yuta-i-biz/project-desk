@@ -305,7 +305,10 @@ class Desk:
         from chat_schedule import overlay
         from workflows import plans
         from autonomy import report as autonomy_report
-        return {**base,'autonomy':autonomy_report(Path.home()/'.claude/runtime',base['projects'],tasks+base.get('sheet_tasks',[])+base.get('imported_tasks',[])),'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        from business_metrics import snapshot as metrics_snapshot
+        from self_growth import status as growth_status
+        from initiatives import report as initiative_report
+        return {**base,'runtime_ops':read_json(self.data/'runtime_ops.json',{}),'business_metrics':metrics_snapshot(self.data,[p for p in base['projects'] if p['company']=='モノ・ループ']),'initiatives':initiative_report(base['projects'],tasks+base.get('sheet_tasks',[])),'self_growth':{**growth_status(self),'enabled':read_json(self.data/'self_growth.json',{}).get('enabled') is True},'insights_error':read_json(self.data/'insights_error.json',{}),'autonomy':autonomy_report(Path.home()/'.claude/runtime',base['projects'],tasks+base.get('sheet_tasks',[])+base.get('imported_tasks',[])),'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),
@@ -500,6 +503,10 @@ class Handler(BaseHTTPRequestHandler):
                     from auth_status import refresh
                     refresh(self.server.desk.data,self.server.desk.home)
                 self.server.desk.collect(force=True);return self.send_data(200,{'ok':True})
+            if route=='/api/self-growth/resolve':
+                if not isinstance(payload,dict):raise ValueError('入力内容を確認してください。')
+                from self_growth import dismiss
+                dismiss(self.server.desk,payload.get('fingerprint'));return self.send_data(200,{'ok':True})
             if route in ('/api/workflows/create','/api/workflows/approve','/api/workflows/pause'):
                 if not read_json(self.server.desk.data/'node.json',{}).get('enable_user_requests'):
                     return self.send_data(503,{'error':'この端末ではAI実行を有効にしていません。'})
@@ -545,6 +552,8 @@ def main():
         private_server.desk=desk;private_server.remote_access=True
         threading.Thread(target=private_server.serve_forever,daemon=True).start()
     stop_sync=threading.Event()
+    from system_insights import loop as insights_loop
+    threading.Thread(target=insights_loop,args=(desk,stop_sync),daemon=True).start()
     if read_json(desk.data/'node.json',{}).get('enable_user_requests'):
         from workflows import loop
         threading.Thread(target=loop,args=(desk,stop_sync),daemon=True).start()

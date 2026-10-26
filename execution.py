@@ -7,6 +7,7 @@ import subprocess
 from scheduler import ProjectQueue
 from urllib.parse import quote
 POOL=ProjectQueue(max_workers=3)
+SELF_GROWTH=object()
 PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md','workspace_manifest.json','tool_scope.json'}
 
 def environment(home):
@@ -44,7 +45,7 @@ def submit(desk,payload):
     job=profile(prompt,attached)
     if payload.get('_autonomous') is True:
         if requested!='Codex':raise ValueError('自動工程はCodexの専用フォルダ内で実行します。')
-        job={'kind':'analysis','requires':{'text'},'review_required':True,'autonomous':True}
+        job={'kind':'implementation' if payload.get('_self_growth') is SELF_GROWTH else 'analysis','requires':{'text'},'review_required':True,'autonomous':True}
     from runtime_profile import describe
     runtime=describe(desk.home,engine)
     task=desk.mutate('create',{'project_id':pid,'title':prompt.strip().splitlines()[0][:200],'next_action':prompt[:2000],**{k:payload[k] for k in ['due_date','start_date','effort_days','depends_on','deadline_reason','completion_criteria'] if k in payload}})
@@ -105,6 +106,7 @@ def submit(desk,payload):
                 context['reference_bundle']=refs
                 (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
                 instruction+=context_instruction(refs)
+                runtime['rules_fingerprint']=refs.get('rules_fingerprint')
                 runtime['reference_summary']={'documents':len(refs['documents']),'unavailable':len(refs['unavailable']),'truncated':sum(bool(d['truncated']) for d in refs['documents'])}
             if engine=='Codex':
                 binary='/opt/homebrew/bin/codex';login=subprocess.run([binary,'login','status'],env=env,capture_output=True,text=True,timeout=15)
@@ -116,6 +118,7 @@ def submit(desk,payload):
                 else:tool_config=codex_config(desk.home,folder,prompt)
                 runtime['scoped_google_tools']=bool(tool_config) and not payload.get('_autonomous',False)
                 runtime['autonomous_draft']=payload.get('_autonomous') is True
+                runtime['self_improvement']=payload.get('_self_growth') is SELF_GROWTH
                 command=[binary,*tool_config,'--ask-for-approval','never','exec','--sandbox','workspace-write','--skip-git-repo-check','--json','--output-last-message',str(folder/'response.txt'),'-']
             elif engine=='Claude Code':
                 binary=str(desk.home/'.local/bin/claude')

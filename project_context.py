@@ -3,7 +3,7 @@ import datetime,hashlib,json,re
 from pathlib import Path
 MAX_FILE=16000
 MAX_TOTAL=48000
-MAX_SOURCES=8
+MAX_SOURCES=10
 
 def redact(text):
  text=re.sub(r'-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----','[秘密鍵省略]',text,flags=re.S)
@@ -33,6 +33,9 @@ def bundle(desk,project,folder):
   p=Path(str(source.get('path') or ''))
   if local_file(p,ledger) and p.suffix=='.md':candidates.append(('project_ledger',p,ledger))
   else:result['unavailable'].append({'kind':'ledger','reason':'案件台帳をこの端末で確認できません'})
+ common=desk.home/'.claude/CLAUDE.md'
+ if local_file(common,desk.home/'.claude'):candidates.append(('common_rules',common,desk.home/'.claude'))
+ else:result['unavailable'].append({'kind':'common_rules','reason':'共通ルールを確認できません'})
  criteria=desk.home/'.claude/runtime/auto_run_criteria.md'
  if local_file(criteria,desk.home/'.claude/runtime'):candidates.append(('execution_policy',criteria,desk.home/'.claude/runtime'))
  workspace=folder/'workspace'
@@ -46,10 +49,10 @@ def bundle(desk,project,folder):
      from workspace import validate
      workspace=validate(record['source'],desk.home)
    except (OSError,ValueError,TypeError,KeyError,AttributeError):result['unavailable'].append({'kind':'project_rules','reason':'登録コードのルールを読み取れません'})
- for name in ('CLAUDE.md','AGENTS.md'):
+ for name in ('CLAUDE.md','AGENTS.md','GEMINI.md'):
   p=workspace/name
   if local_file(p,workspace):candidates.append(('registered_project_rules',p,workspace))
- candidates.sort(key=lambda item:{'execution_policy':0,'registered_project_rules':1,'project_ledger':2}[item[0]])
+ candidates.sort(key=lambda item:{'execution_policy':0,'common_rules':1,'registered_project_rules':2,'project_ledger':3}[item[0]])
  budget=MAX_TOTAL
  for kind,p,root in candidates[:MAX_SOURCES]:
   if budget<=0:result['unavailable'].append({'kind':kind,'reason':'資料抜粋の合計上限'});continue
@@ -61,6 +64,7 @@ def bundle(desk,project,folder):
    result['documents'].append({'kind':kind,'name':p.name,'modified_at':datetime.datetime.fromtimestamp(stat.st_mtime,datetime.timezone.utc).isoformat(),'excerpt_sha256':hashlib.sha256(raw).hexdigest(),'truncated':truncated,'text':text});budget-=len(raw)
   except OSError:result['unavailable'].append({'kind':kind,'reason':'資料を読み取れません'})
  if len(candidates)>MAX_SOURCES:result['unavailable'].append({'kind':'limit','reason':'資料件数の上限'})
+ result['rules_fingerprint']=hashlib.sha256(json.dumps([(d['kind'],d['name'],d['excerpt_sha256']) for d in result['documents'] if d['kind']!='project_ledger'],ensure_ascii=False).encode()).hexdigest()
  return result
 
 def instruction(context):
