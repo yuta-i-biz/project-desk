@@ -285,6 +285,7 @@ class Desk:
         at=dt.datetime.now(JST)
         for t in tasks:
             t['needs_check']=(t['status']=='作業中' and (at-dt.datetime.fromisoformat(t['updated'])).total_seconds()>900)
+            t['is_ai_request']=(self.data/'requests'/t['id']/'project_context.json').exists()
             t['receipt']=read_json(self.data/'requests'/t['id']/'receipt.json',None)
         local_health=read_json(self.data/'session_health.json',{})
         peer=read_json(self.data/'peer_snapshot.json',None)
@@ -314,6 +315,7 @@ class Desk:
         with self.lock:
             if action=='project':
                 name=required(payload,'name',160); company=required(payload,'company',100)
+                if any(normalized(p['company'])==normalized(company) and normalized(p['name'])==normalized(name) for p in self.collect()['projects']):raise ValueError('同じ会社・活動に同名の案件があります。既存の案件を利用してください。')
                 pid='manual-'+secrets.token_hex(8)
                 with self.connect() as c:
                     c.execute('INSERT INTO projects VALUES(?,?,?,?)',(pid,name,company,stamp))
@@ -424,7 +426,14 @@ class Handler(BaseHTTPRequestHandler):
                     raw_url='/api/artifact-preview?task_id='+quote(tid)+'&file='+quote(name)+'&raw=1'
                     if query.get('raw')==['1']:
                         if path.stat().st_size>MAX_PREVIEW or path.suffix.lower() not in RAW:return self.send_data(415,{'error':'画面内表示には対応していません。'})
-                        body=path.read_bytes();self.send_response(200);self.send_header('Content-Type',RAW[path.suffix.lower()]);self.send_header('Content-Disposition','inline');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Referrer-Policy','no-referrer');self.send_header('Content-Security-Policy',"default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"+('; sandbox' if path.suffix.lower() in ('.html','.htm') else ''));self.end_headers();self.wfile.write(body);return
+                        raw_path=path;mime=RAW[path.suffix.lower()]
+                        if query.get('page'):
+                            from previews import pdf_pages
+                            if path.suffix.lower()!='.pdf':return self.send_data(404,{'error':'ページが見つかりません。'})
+                            page=int(query['page'][0]);cache,manifest=pdf_pages(path,ROOT)
+                            if page<1 or page>len(manifest['pages']):return self.send_data(404,{'error':'ページが見つかりません。'})
+                            raw_path=cache/manifest['pages'][page-1];mime='image/png'
+                        body=raw_path.read_bytes();self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','inline');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Referrer-Policy','no-referrer');self.send_header('Content-Security-Policy',"default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"+('; sandbox' if path.suffix.lower() in ('.html','.htm') else ''));self.end_headers();self.wfile.write(body);return
                     return self.send_data(200,describe(path,raw_url,ROOT))
                 self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(path.name));self.send_header('Content-Length',str(path.stat().st_size));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
                 with path.open('rb') as stream:
@@ -439,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
                 filename='index.html' if self.authorized() else 'login.html'
                 html=(ROOT/'static'/filename).read_text().replace('__CSRF_TOKEN__',self.server.desk.token)
                 return self.send_data(200,html,'text/html; charset=utf-8')
-            allowed={'/deadlines.js':'application/javascript; charset=utf-8','/voice.js':'application/javascript; charset=utf-8','/app.js':'application/javascript; charset=utf-8','/login.js':'application/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}
+            allowed={'/request_summary.js':'application/javascript; charset=utf-8','/deadlines.js':'application/javascript; charset=utf-8','/voice.js':'application/javascript; charset=utf-8','/app.js':'application/javascript; charset=utf-8','/login.js':'application/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}
             if route in allowed:return self.send_data(200,(ROOT/'static'/route[1:]).read_bytes(),allowed[route])
             self.send_data(404,{'error':'ページが見つかりません。'})
         except (OSError,sqlite3.Error,ValueError):self.send_data(500,{'error':'情報を読み込めませんでした。再読み込みしてください。'})

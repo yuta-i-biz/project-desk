@@ -80,3 +80,12 @@ Files, Drive storage and in-app artifact previews
 * Added inline image/SVG/PDF/text/table/Office-content previews and sandboxed HTML previews.
 * Added configurable company aliases without changing project IDs or source ledgers.
 * Verified 34 Python tests, browser preview/file controls, native PDF/image OCR, and real private Drive upload with byte verification.
+
+Request outcomes and project creation
+-------------------------------------
+
+* Prioritized final deliverables, friendly request titles, and outstanding work in request results.
+* Collapsed implementation assets and added direct links to individual request outcomes.
+* Added desktop/mobile project creation with company/activity selection and duplicate prevention.
+* Replaced embedded PDF frames with native page-image previews for mobile and in-app browser compatibility (up to 20 pages).
+* Verified 36 Python tests, request summary checks, company-selection validation and real multi-page PDF display.

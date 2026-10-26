@@ -18,3 +18,5 @@ class ScheduleChatTests(unittest.TestCase):
  def test_readonly_override_without_source_change(self):
   t={'id':'sheet-1','project_id':self.p,'title':'原本の仕事','status':'未着手','read_only':True,'version':None,'deadline':'2026/10/25(日)'}
   original=self.d.snapshot;self.d.snapshot=lambda:{'tasks':overlay(self.d,[t])};quote='原本の仕事の期日を2026-11-02に変更';r=apply(self.d,self.p,quote,[{'task_id':t['id'],'source_quote':quote,'due_date':'2026-11-02'}],[t]);self.assertTrue(r[0]['applied']);self.assertEqual(t['deadline'],'2026/10/25(日)');self.assertEqual(overlay(self.d,[t])[0]['due_date'],'2026-11-02');self.d.snapshot=original
+ def test_duplicate_project_rejected(self):
+  with self.assertRaises(ValueError):self.d.mutate('project',{'name':'案件A','company':'会社A'})

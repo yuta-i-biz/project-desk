@@ -7,6 +7,13 @@ func ocr(_ image: CGImage) -> String {
  let request=VNRecognizeTextRequest();request.recognitionLevel = .accurate;request.recognitionLanguages=["ja-JP","en-US"];request.usesLanguageCorrection=true
  do {try VNImageRequestHandler(cgImage:image,options:[:]).perform([request]);return (request.results ?? []).compactMap{$0.topCandidates(1).first?.string}.joined(separator:"\n")} catch {return ""}
 }
+if CommandLine.arguments.count==4 && CommandLine.arguments[2]=="--render" {
+ let url=URL(fileURLWithPath:CommandLine.arguments[1]);let out=URL(fileURLWithPath:CommandLine.arguments[3],isDirectory:true);try FileManager.default.createDirectory(at:out,withIntermediateDirectories:true)
+ guard let doc=PDFDocument(url:url), !doc.isLocked else {exit(2)}
+ var names=[String]()
+ for i in 0..<min(doc.pageCount,20) {if let page=doc.page(at:i){let image=page.thumbnail(of:NSSize(width:1400,height:2000),for:.mediaBox);var rect=NSRect(origin:.zero,size:image.size);if let cg=image.cgImage(forProposedRect:&rect,context:nil,hints:nil),let bytes=NSBitmapImageRep(cgImage:cg).representation(using:.png,properties:[:]){let name="page-\(i+1).png";try bytes.write(to:out.appendingPathComponent(name));names.append(name)}}}
+ let data=try JSONSerialization.data(withJSONObject:["pages":names,"total":doc.pageCount]);print(String(data:data,encoding:.utf8)!);exit(0)
+}
 let url=URL(fileURLWithPath:CommandLine.arguments[1]);var text="";var recognized=false;var status="読取済み"
 if url.pathExtension.lowercased()=="pdf" {
  if let doc=PDFDocument(url:url), !doc.isLocked {

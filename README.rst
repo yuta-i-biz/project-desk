@@ -63,3 +63,8 @@ The Mac mini runtime uses its existing ~/.claude/tools/google_auth.py OAuth help
 macOS PDFKit/Vision OCR is compiled from native/file_reader.swift on first use when needed. Files are limited to 50 MB each; PDF reading is bounded to 40 pages and textual previews to 100,000 characters. AI context contains up to 16,000 characters per selected attachment, with originals copied to the dedicated request folder. Audio/video and unsupported binary formats are stored without claiming transcription or full content understanding.
 
 Artifact previews are limited to 20 MB. Office previews show extracted contents, not the original page layout. HTML previews cannot execute scripts or make external requests.
+
+Request outcomes and projects
+-----------------------------
+
+Use the request progress menu to see final deliverables and remaining work. An individual request can be opened with /?view=results&task=TASK_ID. New projects are available from desktop and mobile menus and require choosing a company/activity; a new company/activity can also be entered. Existing same-name projects within the same company are rejected to avoid duplicate records. PDF previews render the first 20 pages as images for browser compatibility.

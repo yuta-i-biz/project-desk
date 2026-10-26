@@ -20,3 +20,10 @@ class PreviewTests(unittest.TestCase):
      with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(urllib.request.Request(origin+'/api/artifact-preview?task_id=task-abcdef&file='+name,headers=headers))
      self.assertEqual(e.exception.code,404)
    finally:server.shutdown();server.server_close();t.join()
+ def test_pdf_returns_image_pages(self):
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);pdf=root/'file.pdf';pdf.write_bytes(b'%PDF fixture')
+   with patch('previews.pdf_pages',return_value=(root,{'pages':['page-1.png','page-2.png'],'total':2})):
+    data=describe(pdf,'/preview?raw=1',root)
+   self.assertEqual(data['kind'],'pdf');self.assertEqual(data['pages'],['/preview?raw=1&page=1','/preview?raw=1&page=2'])
