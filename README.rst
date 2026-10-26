@@ -49,3 +49,8 @@ node test_voice.cjs
 ----------
 
 start_remote_access.pyは明示的な--enable指定でCloudflareの一時HTTPS接続を作ります。専用の認証付き口だけを転送します。案件データの通信はCloudflareを通るため、利用者の明示的な許可後だけ有効にしてください。一時URLは変わるため、安定した本番URLとは扱いません。
+
+Tailscale Funnel
+---------------
+
+Mac miniの既存Tailscaleを使う代替接続を追加しました。スマホ側はTailscaleアプリやVPN操作が不要です。tailnetの管理者がFunnelを有効にした後、Mac miniで start_funnel.py --enable を実行します。認証付きの127.0.0.1:18767だけを接続し、既存の443番の別サービスを上書きしません。公開URLでもアプリの接続コードは必要です。
