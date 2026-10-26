@@ -61,3 +61,12 @@ Company deadlines and multiple project requests
 * Separated missing dates and unassessed projects from overdue work.
 * Added up to six project-specific requests in one submission, queued for sequential processing.
 * Verified date formats, company isolation, completion exclusion and bulk request payload separation. Python: 18 tests passed.
+
+Cross-project chat and connected gantt
+-------------------------------------
+
+* Added task/project instructions directly from deadline cards.
+* Added cross-project search and AI chat with explicit all-project scope and a reusable conversation project.
+* Added app-local gantt charts and validated explicit user-backed date/status updates from AI receipts.
+* Kept source Google documents unchanged using local schedule overrides for imported tasks.
+* Verified 24 Python tests, JS checks, browser navigation/search, and real Codex start/due date updates on an isolated Mac mini test project.

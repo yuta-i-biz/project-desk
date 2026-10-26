@@ -290,7 +290,8 @@ class Desk:
                 key=normalized(row['company'])+'/'+normalized(row['project_name'])
                 health_rows.append({**row,'project_id':session_projects.get(row['session_id']) or exact.get(key)})
         health={'sources':[{k:v for k,v in h.items() if k!='rows'} for h in health_sources], 'rows':health_rows}
-        return {**base,'tasks':tasks+base.get('sheet_tasks',[]),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        from chat_schedule import overlay
+        return {**base,'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),
