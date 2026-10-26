@@ -89,3 +89,10 @@ Request outcomes and project creation
 * Added desktop/mobile project creation with company/activity selection and duplicate prevention.
 * Replaced embedded PDF frames with native page-image previews for mobile and in-app browser compatibility (up to 20 pages).
 * Verified 36 Python tests, request summary checks, company-selection validation and real multi-page PDF display.
+
+Manual project visibility fix
+-----------------------------
+
+* Fixed new manual projects being hidden by legacy-source filtering when a canonical company gantt exists.
+* Displayed company names in project selection and chat headers.
+* Reproduced the defect with a failing test, then verified all 37 Python tests and the live project deep link.

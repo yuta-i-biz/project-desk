@@ -211,7 +211,7 @@ class Desk:
             sheet_tasks=[]
             if canonical_ml:
                 for p in projects.values():
-                    if normalized(p['company'])==normalized('モノ・ループ'):p['reference_only']=True
+                    if normalized(p['company'])==normalized('モノ・ループ') and not p['id'].startswith('manual-'):p['reference_only']=True
                 for sheet in ml_gantt['projects']:
                     display_name=sheet.get('tab_name') if not sheet.get('archived') and sheet.get('tab_name') else sheet['name']
                     key=normalized('モノ・ループ')+'/'+normalized(display_name)
