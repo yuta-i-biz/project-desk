@@ -56,6 +56,23 @@ class DeskTests(unittest.TestCase):
         task=next(t for t in self.desk.snapshot()['tasks'] if t['id']==first['id'])
         self.assertEqual(task['due_date'],'2026-10-30')
         self.assertEqual(len(self.desk.snapshot()['tasks']),2)
+    def test_conversation_is_project_scoped_and_limited(self):
+        from conversation import history
+        other=self.desk.mutate('project',{'company':'会社B','name':'別案件'})
+        ids=[]
+        for i in range(5):
+            t=self.create();ids.append(t['id'])
+            folder=self.desk.data/'requests'/t['id'];folder.mkdir(parents=True)
+            (folder/'receipt.json').write_text(json.dumps({'request':'依頼'+str(i),'summary':'結果'+str(i)}))
+        t=self.desk.mutate('create',{'project_id':other['id'],'title':'別案件の秘密'})
+        folder=self.desk.data/'requests'/t['id'];folder.mkdir(parents=True)
+        (folder/'receipt.json').write_text(json.dumps({'request':'他案件','summary':'他案件の秘密'}))
+        got=history(self.desk,self.pid)
+        self.assertEqual(len(got),3)
+        self.assertEqual([x['task_id'] for x in got],ids[-3:])
+        self.assertNotIn(t['id'],[x['task_id'] for x in got])
+        self.assertTrue(all(x['task_id'] in ids for x in got))
+        self.assertFalse(history(self.desk,other['id'],t['id']))
     def test_no_fuzzy_merge(self):
         self.note.with_name('【会社A：案件甲_改修】.md').write_text('## 現在地\n別の記録')
         self.assertEqual(len(self.desk.collect(force=True)['projects']),2)
