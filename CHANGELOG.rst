@@ -128,3 +128,10 @@ Registered source copies and authentication diagnostics
 * Real isolated Mac mini execution fixed a two-file calculation fixture in the copy, passed the fixture's unit test, left originals unchanged and produced a patch. Independent review outcomes are recorded separately from successful execution.
 
 * Final validation for this milestone: 66 Python tests and six JavaScript test programs passed. Mac mini Python 3.9.6 also passed all 66 tests. The real isolated Codex workflow completed the source-copy fix, an independent read-only review/test rerun, original-file verification and patch generation. The new code is prepared for rollout; existing workspace parity remains incomplete.
+
+チャット入力欄を下部に固定
+--------------------------
+
+* 会話・全案件検索・ガントチャートを同じスクロール領域にまとめ、入力欄を下部に維持。
+* スマートフォンの表示領域縮小に追従。拡大操作ではレイアウトを縮めない。
+* 表示領域の5検証とJavaScript構文検証に合格。スマートフォンの実機確認は未完了。

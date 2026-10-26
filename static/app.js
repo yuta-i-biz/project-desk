@@ -148,7 +148,9 @@ function renderChat(){
  rail.append(E('div',{class:'engine-state'},E('span',{class:'local-dot'}),available?(chatDraft.engine==='おまかせ'?'内容と接続状態からAIを自動選択':'選択中のAIは認証確認済み'):'AIの接続確認が必要'));
  const tools=E('details',{class:'chat-tools'},E('summary',{},'📎 資料・音声の設定'),filePanel(),window.DeskVoice?.controls(state.data,chatDraft.project));
  const layout=E('div',{class:'chat-layout'},E('section',{class:'conversation'},E('div',{class:'chat-project-picker'},E('span',{},'案件'),select,E('button',{type:'button',class:'secondary',onclick:openBulkRequests},'複数案件に指示')),thread,tools,form),rail);
- clear($('#content'),...(chatDraft.project==='__all__'?[globalSearch()]:[]),layout,makeGantt(state.data.tasks.filter(t=>chatDraft.project==='__all__'||t.project_id===chatDraft.project)));$('#visible-count').textContent='案件ごとに依頼・進捗・成果を保存';
+ thread.append(makeGantt(state.data.tasks.filter(t=>chatDraft.project==='__all__'||t.project_id===chatDraft.project)));
+ if(chatDraft.project==='__all__')thread.prepend(globalSearch());
+ clear($('#content'),layout);$('#visible-count').textContent='案件ごとに依頼・進捗・成果を保存';
  if(focusedInput){const updated=$('#chat-input');updated?.focus({preventScroll:true});if(inputSelection&&updated)updated.setSelectionRange(...inputSelection);}
 }
 

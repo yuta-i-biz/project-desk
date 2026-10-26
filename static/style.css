@@ -115,3 +115,13 @@ button.artifact{text-align:left;color:#c4e8f5;cursor:pointer}.artifact-dialog{wi
  .chat-mode .chat-composer{padding:10px;gap:6px}
  .chat-mode .conversation-heading h2{font-size:15px}
 }
+
+/* Keep the request composer docked while only the conversation scrolls. */
+.chat-mode main{height:var(--desk-viewport-height,100dvh)}
+.chat-mode .page{height:calc(var(--desk-viewport-height,100dvh) - 77px)}
+.chat-mode .chat-layout{flex:1 1 0;min-height:0}
+.chat-mode .chat-composer{z-index:2;background:#111e31}
+@media(max-width:760px){
+ .chat-mode .page{height:calc(var(--desk-viewport-height,100dvh) - 66px)}
+ .chat-mode .chat-composer{max-height:50%;}
+}
