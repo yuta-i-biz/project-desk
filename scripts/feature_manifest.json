@@ -47,5 +47,10 @@
     "READ_TOOLS",
     "この案件の明示された資料",
     "enabled=false"
+  ],
+  "autonomy.py": [
+    "date_match",
+    "unclassified",
+    "要人力"
   ]
 }

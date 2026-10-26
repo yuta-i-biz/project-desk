@@ -304,7 +304,8 @@ class Desk:
         from attachments import public_records
         from chat_schedule import overlay
         from workflows import plans
-        return {**base,'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        from autonomy import report as autonomy_report
+        return {**base,'autonomy':autonomy_report(Path.home()/'.claude/runtime',base['projects'],tasks+base.get('sheet_tasks',[])+base.get('imported_tasks',[])),'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),

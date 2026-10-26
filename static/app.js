@@ -231,6 +231,7 @@ function renderActionCenter(){
   wrap.append(section);
  }
  renderWorkflowPlans(wrap);
+ renderAutonomy(wrap);
  clear($('#content'),wrap);$('#visible-count').textContent='未完了 '+rows.length+'件 / 取得済み記録の範囲';
 }
 
@@ -252,4 +253,33 @@ function renderWorkflowPlans(wrap){
   section.append(card);
  }
  wrap.prepend(section);
+}
+
+const autonomyExpanded=new Set();
+function autonomyDetails(key,title){const d=E('details',{},E('summary',{},title));d.open=autonomyExpanded.has(key);d.addEventListener('toggle',()=>{if(d.isConnected){if(d.open)autonomyExpanded.add(key);else autonomyExpanded.delete(key);}});return d;}
+function renderAutonomy(wrap){
+ const a=state.data.autonomy;if(!a)return;
+ const section=E('section',{class:'overview-project'},E('h2',{},'Plaudからの自律進行・残っている仕事'),E('p',{},a.runner),E('p',{class:'subtle'},a.coverage));
+ for(const source of a.sources||[])section.append(E('small',{},({'plaud_fetch':'Plaud取得','plaud_llm':'決定・TODOの抽出','task_triage':'残タスクの仕分け','night_exec':'実行・検品結果'}[source.name]||'取得元')+' / '+(source.date||'記録なし')+' / '+({fresh:'取得記録あり（現在の実行中を示しません）',stale:'更新が古い・稼働確認が必要',missing:'未取得',error:'読取エラー'}[source.state]||source.state)),E('br'));
+ if(!a.date_match)section.append(E('p',{},'仕分けと実行結果の日付が異なります。前回の成功を今回の完了として扱いません。'));
+ const visible=row=>{const p=projectById(row.project_id);return p?matching(p):!state.company&&(!state.query||row.title.toLowerCase().includes(state.query.toLowerCase()));};
+ const records=[...(a.rows||[]),...(a.unclassified||[])].filter(visible);
+ for(const group of ['approval','data','repair','other','ai','unknown','done']){
+  const items=records.filter(x=>x.group===group),details=autonomyDetails(group,(a.labels[group]||group)+' · '+items.length+'件');
+  if(group==='repair')details.append(E('p',{},'実行・検品の失敗です。人しかできない仕事とは限りません。'));
+  for(const row of items){const p=projectById(row.project_id),card=E('article',{class:'task-card'},E('small',{},p?p.company+' / '+p.name:'案件の紐付け未確認'),E('h3',{},row.title),E('p',{},row.reason||'理由を確認'),E('p',{},row.result_status||'実行結果は未取得'));
+   if(row.next_action)card.append(E('p',{},'AI側の準備：'+row.next_action));
+   for(const need of row.required_data||[])card.append(E('p',{},'必要な資料・操作：'+need));
+   if(row.url)card.append(E('a',{href:row.url,target:'_blank',rel:'noopener',class:'text-button'},'成果物・確認先を開く ↗'));
+   if(p)card.append(E('button',{class:'secondary',onclick:()=>beginChat(p.id)},'案件について指示'));
+   details.append(card);
+  }
+  section.append(details);
+ }
+ const meetings=autonomyDetails('meetings','Plaudの抽出結果・発言根拠');
+ for(const rec of a.meetings||[]){meetings.append(E('h3',{},rec.title),E('p',{},rec.ok?'抽出済み。決定・TODO・検討課題を区別します。':'抽出失敗・再確認が必要'));
+  if(rec.url)meetings.append(E('a',{href:rec.url,target:'_blank',rel:'noopener'},'元の議事録を開く ↗'));
+  for(const t of rec.tasks||[])meetings.append(E('p',{},t.type+'：'+t.title),E('small',{},'担当 '+t.assignee+' / 期限 '+t.deadline),E('blockquote',{},t.evidence));
+ }
+ section.append(meetings);wrap.prepend(section);
 }
