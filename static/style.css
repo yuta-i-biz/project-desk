@@ -97,3 +97,21 @@ button.artifact{text-align:left;color:#c4e8f5;cursor:pointer}.artifact-dialog{wi
 @media(max-width:760px){
  .chat-mode .page{height:calc(100dvh - 66px);}
 }
+
+/* Preserve room for the conversation on laptop-height and phone screens. */
+.chat-mode .chat-project-picker{flex-wrap:nowrap;padding:10px 14px;gap:10px;flex:0 0 auto}
+.chat-mode .chat-project-picker select{flex:1;width:0;min-width:0}
+.chat-mode .chat-project-picker>button{flex:0 0 auto;white-space:nowrap;padding:8px 10px;font-size:11px}
+.chat-mode .chat-thread{padding:14px 18px}
+.chat-mode .conversation-heading{gap:10px;margin:0 0 14px}
+.chat-mode .conversation-heading h2{font-size:17px;line-height:1.4;margin:3px 0}
+.chat-mode .conversation-heading p{display:none}
+.chat-mode .conversation-heading .orbit{width:36px;height:36px;border-radius:12px;font-size:22px}
+.chat-mode .chat-composer{display:flex;flex-direction:column;gap:8px;padding:12px}
+.chat-mode .chat-composer textarea{height:52px;min-height:48px;flex:0 0 auto}
+.chat-mode .composer-status{margin:0;font-size:10px;line-height:1.5}
+@media(max-width:760px){
+ .chat-mode .chat-thread{padding:12px}
+ .chat-mode .chat-composer{padding:10px;gap:6px}
+ .chat-mode .conversation-heading h2{font-size:15px}
+}

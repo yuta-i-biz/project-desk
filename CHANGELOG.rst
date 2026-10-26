@@ -113,3 +113,8 @@ Manual project visibility fix
 * Fix invalidation of project snapshots when the monotonic clock is near its origin, reproduced on the Mac mini's Python 3.9.6.
 * Validation: 51 Python tests passed locally and in an isolated Mac mini package; all six JavaScript test programs passed. Live synthetic-image checks accepted a matching blue square and rejected a blue square incorrectly described as red.
 * This release also includes the previously prepared waiting-task navigation, unified chat scrolling and expandable input controls. Full existing-workspace execution and background Claude authentication remain incomplete.
+
+Post-deployment viewport check
+-----------------------------
+
+* Reduced the project picker, conversation heading and composer spacing after the real 1280x720 screen showed too little space for messages. Kept the input anchored and the conversation independently scrollable.
