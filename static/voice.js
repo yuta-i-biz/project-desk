@@ -4,7 +4,16 @@
 function clean(text){return String(text||'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'リンク').replace(/\/[A-Za-z][^\s。、]+/g,'保存先').replace(/[`#*<>]/g,'').replace(/\s+/g,' ').trim();}
 function brief(task){const r=task.receipt||{};return clean((r.summary||task.result||task.blocker||task.next_action||'').slice(0,1400)).slice(0,420);}
 function important(data,pid){const tasks=(data.tasks||[]).filter(t=>t.project_id===pid);const waiting=tasks.filter(t=>['確認待ち','保留'].includes(t.status));const pending=tasks.filter(t=>t.status!=='完了');const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const due=pending.filter(t=>String(t.deadline||t.due_date||'').replaceAll('/','-').slice(0,10)===today);const p=(data.projects||[]).find(p=>p.id===pid);return clean((p?.name||'選択した案件')+'。未完了は'+pending.length+'件、確認待ちは'+waiting.length+'件です。'+(due.length?'本日期限は'+due.length+'件。'+due.slice(0,2).map(t=>t.title).join('。')+'。':'')+(waiting[0]?'確認が必要です。'+waiting[0].title+'。'+(waiting[0].blocker||''):'')+(pending[0]?'次の作業は、'+(pending[0].next_action||pending[0].title):'登録タスクは完了です。')).slice(0,600);}
-const api={clean,brief,important};
+function capture(options){
+ const r=new options.Speech();let failed=false,cancelled=false,finals=new Map();
+ r.lang='ja-JP';r.continuous=false;r.interimResults=true;
+ r.onstart=()=>options.onStart?.();
+ r.onresult=e=>{let interim='';for(let i=0;i<e.results.length;i++){const x=e.results[i];if(x.isFinal)finals.set(i,x[0].transcript);else interim+=x[0].transcript;}options.onText?.([...finals.values()].join(''),interim);};
+ r.onerror=e=>{failed=true;options.onError?.(e.error);};
+ r.onend=()=>options.onEnd?.({text:[...finals.values()].join('').trim(),submit:!failed&&!cancelled&&[...finals.values()].join('').trim().length>0});
+ return {start:()=>r.start(),stop:()=>r.stop(),cancel:()=>{cancelled=true;r.abort();}};
+}
+const api={clean,brief,important,capture};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 if(!root.document)return;
 let enabled=false,armed=false,conversation=false,known=new Map(),first=true;try{enabled=localStorage.getItem('desk-speech')==='on';}catch{}

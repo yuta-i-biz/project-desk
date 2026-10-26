@@ -45,3 +45,11 @@ Authenticated remote access verified
 * Enabled Tailscale Funnel on the Mac mini runtime.
 * Verified public HTTPS login, protected project and artifact endpoints, and Secure/HttpOnly cookies.
 * Updated mobile connection guidance; physical phone voice testing remains pending.
+
+Voice request controls
+----------------------
+
+* Added explicit end-of-speech request submission and live transcription.
+* Prevented automatic submission after recognition errors or page hiding.
+* Verified four recognition lifecycle cases plus five existing summary checks.
+* Physical mobile microphone testing remains pending.

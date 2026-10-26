@@ -58,6 +58,7 @@ const detailBase=renderDetail;renderDetail=function(pid){detailBase(pid);const a
 // A single project conversation: requests, evidence and project state together.
 const chatDraft={project:'',engine:'おまかせ',text:'',listening:false};
 let voiceRecognition=null;
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&voiceRecognition)voiceRecognition.cancel();});
 const priorContent=renderContent;
 renderContent=function(){document.body.classList.toggle('chat-mode',state.view==='chat');if(state.view==='chat')renderChat();else priorContent();};
 function renderChat(){
@@ -69,22 +70,29 @@ function renderChat(){
  const engine=E('select',{'aria-label':'使用するAI',onchange:e=>chatDraft.engine=e.target.value},...['おまかせ','Codex','Claude Code','Gemini'].map(name=>E('option',{value:name,...(name===chatDraft.engine?{selected:''}:{})},name)));
  const text=E('textarea',{id:'chat-input',rows:'3',placeholder:'この案件で、何を進めましょう？', 'aria-label':'AIへの依頼',oninput:e=>chatDraft.text=e.target.value});text.value=chatDraft.text;
  const status=E('p',{class:'composer-status',role:'status'},chatDraft.listening?'音声を入力中。もう一度押すと停止します。':'音声も文字も、確認してから送信できます。');
+ const autoSend=E('input',{type:'checkbox','aria-label':'話し終わったら依頼を送信'});autoSend.checked=Boolean(chatDraft.voiceSend);
+ autoSend.onchange=()=>{chatDraft.voiceSend=autoSend.checked;};
+ const voiceMode=E('label',{class:'voice-send-mode'},autoSend,' 話し終わったら送信');
  const mic=E('button',{type:'button',class:'voice-button','aria-label':'音声入力の開始・停止',onclick:()=>{
    if(voiceRecognition){voiceRecognition.stop();return;}
    window.DeskVoice?.listen();
    const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-   if(!Speech){status.textContent='このブラウザは音声入力に対応していません。キーボードのマイク・音声入力をご利用ください。';return;}
-   let gotTranscript=false;const r=new Speech();voiceRecognition=r;r.lang='ja-JP';r.continuous=false;r.interimResults=false;
-   r.onstart=()=>{chatDraft.listening=true;mic.classList.add('recording');status.textContent='聞いています… 停止はマイクを押してください。';};
-   r.onresult=e=>{gotTranscript=true;chatDraft.text+=(chatDraft.text?'\n':'')+Array.from(e.results).map(x=>x[0].transcript).join('');text.value=chatDraft.text;};
-   r.onerror=e=>{status.textContent=e.error==='not-allowed'?'ブラウザのマイク利用を許可してください。':'音声を取得できませんでした。端末の音声入力も使えます。';};
-   r.onend=()=>{voiceRecognition=null;chatDraft.listening=false;mic.classList.remove('recording');if(gotTranscript&&window.DeskVoice?.isConversation()&&text.value.trim())form.requestSubmit();};
-   try{r.start();}catch{voiceRecognition=null;status.textContent='音声入力を開始できませんでした。';}
- }},'◉ 音声');
+   if(!Speech){text.focus();status.textContent='このブラウザでは、キーボードのマイクで入力して「依頼を送る」を押してください。iPhoneはSafari、AndroidはChromeでもお試しください。';return;}
+   if(!window.isSecureContext){status.textContent='音声入力にはHTTPSのアプリURLを使ってください。';return;}
+   const base=chatDraft.text;const pid=chatDraft.project;const shouldSend=autoSend.checked||window.DeskVoice?.isConversation();
+   const reset=()=>{voiceRecognition=null;chatDraft.listening=false;mic.classList.remove('recording');mic.textContent='🎙 話して入力';select.disabled=false;send.disabled=false;autoSend.disabled=false;};
+   const r=window.DeskVoice.capture({Speech,
+     onStart:()=>{chatDraft.listening=true;select.disabled=true;send.disabled=true;autoSend.disabled=true;mic.classList.add('recording');mic.textContent='■ 話し終わる';status.textContent=shouldSend?'聞いています。話し終わるとこの案件に依頼を送ります。':'聞いています。話し終わったら内容を確認して送信してください。';},
+     onText:(final,interim)=>{chatDraft.text=base+(base&&final?'\n':'')+final;text.value=chatDraft.text+(interim?' '+interim:'');},
+     onError:error=>{status.textContent=error==='not-allowed'?'マイクが許可されていません。ブラウザのサイト設定でマイクを許可してください。':error==='no-speech'?'声を確認できませんでした。もう一度マイクを押してください。':'音声入力が中断されました。入力済みの内容は確認して送信できます。';},
+     onEnd:result=>{reset();text.value=chatDraft.text;if(result.submit&&shouldSend&&!document.hidden&&pid===chatDraft.project){status.textContent='音声の依頼を送っています…';form.requestSubmit();}else if(result.submit){status.textContent='音声を入力しました。内容を確認して「依頼を送る」を押してください。';}}
+   });voiceRecognition=r;
+   try{r.start();}catch{reset();status.textContent='音声入力を開始できませんでした。もう一度お試しください。';}
+ }},'🎙 話して入力');
  const send=E('button',{type:'submit',class:'primary'},'依頼を送る ↑');
  const due=E('input',{type:'date','aria-label':'依頼の期日',oninput:e=>chatDraft.due_date=e.target.value});due.value=chatDraft.due_date||'';
  const timing=E('details',{class:'request-timing'},E('summary',{},'期日を指定する（任意）'),E('label',{},'期日 ',due),E('p',{},'開始日・前工程・完了条件は送信後に「状態・残作業」から登録できます。'));
- const form=E('form',{class:'chat-composer',onsubmit:async e=>{e.preventDefault();if(!chatDraft.text.trim())return;send.disabled=true;try{await api('/api/run',{project_id:chatDraft.project,engine:chatDraft.engine,prompt:chatDraft.text,due_date:due.value});chatDraft.text='';chatDraft.due_date='';text.value='';due.value='';await load(true);}catch(err){status.textContent=err.message;}finally{send.disabled=false;}}},text,timing,E('div',{class:'composer-controls'},E('div',{},E('details',{class:'engine-options'},E('summary',{},'✦ AI：おまかせ'),engine),mic),send),status);
+ const form=E('form',{class:'chat-composer',onsubmit:async e=>{e.preventDefault();if(chatDraft.listening||send.disabled||!chatDraft.text.trim())return;send.disabled=true;try{await api('/api/run',{project_id:chatDraft.project,engine:chatDraft.engine,prompt:chatDraft.text,due_date:due.value});chatDraft.text='';chatDraft.due_date='';text.value='';due.value='';await load(true);}catch(err){status.textContent=err.message;}finally{send.disabled=false;}}},text,timing,E('div',{class:'composer-controls'},E('div',{},E('details',{class:'engine-options'},E('summary',{},'✦ AI：おまかせ'),engine),mic,voiceMode),send),status);
  const thread=E('div',{class:'chat-thread'},E('div',{class:'conversation-heading'},E('span',{class:'orbit'},'✦'),E('div',{},E('div',{class:'eyebrow'},'YOUR PROJECT, IN MOTION'),E('h2',{},project?.name||'仕事の続きを、ここから。'),E('p',{},'話す。頼む。進み具合と成果を、ひとつの場所で。'))));
  const tasks=state.data.tasks.filter(t=>t.project_id===chatDraft.project&&!t.read_only).sort((a,b)=>(a.created||a.updated||'').localeCompare(b.created||b.updated||''));
  if(!tasks.length)thread.append(E('div',{class:'chat-welcome'},E('h3',{},'次にやることを、一緒に。'),E('p',{},'案件を選び、文字や音声で依頼してください。実行結果はこの会話と案件に残ります。')));
