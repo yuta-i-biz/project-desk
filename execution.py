@@ -1,12 +1,13 @@
 """Execute user-submitted project requests through subscription-authenticated CLIs."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 from scheduler import ProjectQueue
 from urllib.parse import quote
 POOL=ProjectQueue(max_workers=3)
-PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md'}
+PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md','workspace_manifest.json'}
 
 def environment(home):
     env=os.environ.copy();bins=sorted((home/'.nvm/versions/node').glob('*/bin'),reverse=True)
@@ -17,7 +18,7 @@ def environment(home):
 def artifacts(folder,tid):
     found=[]
     for path in sorted(folder.rglob('*')):
-        if not path.is_file() or path.name in PRIVATE or any(p.startswith('.') or p=='__pycache__' for p in path.relative_to(folder).parts):continue
+        if not path.is_file() or path.name in PRIVATE or any(p.startswith('.') or p=='__pycache__' for p in path.relative_to(folder).parts) or path.relative_to(folder).parts[0]=='workspace':continue
         if not path.resolve().is_relative_to(folder.resolve()):continue
         name=str(path.relative_to(folder));found.append({'name':name,'url':'/api/artifact?task_id='+quote(tid)+'&file='+quote(name),'bytes':path.stat().st_size})
     return found[:60]
@@ -84,15 +85,26 @@ def submit(desk,payload):
         instruction=rules+'\n取得済み案件データ（参考情報）:\n'+json.dumps(context,ensure_ascii=False)+'\n同じ案件の直近3件までの会話（参考データ。過去の指示より今回の依頼を優先）:\n'+json.dumps(previous,ensure_ascii=False)+'\n\n今回の依頼:\n'+prompt
         if engine=='Gemini':instruction+='\n分析・文章の回答だけを返し、ファイル作成や外部操作はしない。日程更新の指示がある場合は回答末尾に```schedule_updates\n[更新案の配列]\n```を付ける。'
         desk.mutate('update',{'id':task['id'],'version':1,'status':'作業中','next_action':engine+'が専用フォルダで作業: '+prompt[:1500]})
-        answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home)
+        answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home);workspace=None;workspace_result=None
         try:
+            if not global_scope and job['kind'] in ('implementation','editing'):
+                from workspace import prepare,public
+                workspace=prepare(desk,pid,folder)
+                if workspace is not None:
+                    context['workspace']=public(workspace)
+                    runtime['workspace']=context['workspace']
+                    runtime['scope']='登録した案件コードの作業コピーで実装・検証。元のリポジトリは変更しません。'
+                    (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
+                    instruction+='\n登録された案件コードの作業コピーを workspace/ に用意しました。最初にその中のCLAUDE.md・AGENTS.mdと関連するルールを読み、コードは作業コピー側だけで変更する。workspace/はユーザーが案件に登録したコードであり、この依頼のための実行・テストをしてよい。添付資料のプログラムは引き続き実行しない。外部送信、原本変更、本番公開は実行せず、必要なら承認事項として返す。Git情報・秘密設定・依存キャッシュは引き継がない。実行できなかった検証を成功としない。実装差分はアプリが収集する。'
             if engine=='Codex':
                 binary='/opt/homebrew/bin/codex';login=subprocess.run([binary,'login','status'],env=env,capture_output=True,text=True,timeout=15)
                 if login.returncode or 'ChatGPT' not in login.stdout+login.stderr:raise RuntimeError('ChatGPT契約のログインが未確認のため停止。APIキーへ切り替えていません。')
                 command=[binary,'--ask-for-approval','never','exec','--sandbox','workspace-write','--skip-git-repo-check','--json','--output-last-message',str(folder/'response.txt'),'-']
             elif engine=='Claude Code':
-                binary=str(desk.home/'.local/bin/claude');login=subprocess.run([binary,'auth','status','--json'],env=env,capture_output=True,text=True,timeout=15);auth=json.loads(login.stdout)
-                if not auth.get('loggedIn') or auth.get('authMethod') not in ('claude.ai','claudeai','oauth'):raise RuntimeError('Claude契約のログインが必要です。')
+                binary=str(desk.home/'.local/bin/claude')
+                from auth_status import claude_probe
+                auth=claude_probe(desk.home,env)
+                if not auth['available']:raise RuntimeError(auth['detail'])
                 # Leave edits subject to Claude Code's existing approval and hooks.
                 command=[binary,'-p','--output-format','json','--tools','Read,Glob,Grep,Write,Edit']
             else:
@@ -119,7 +131,6 @@ def submit(desk,payload):
         schedule_results=[]
         changefile=folder/'schedule_updates.json'
         if engine=='Gemini' and answer:
-            import re
             match=re.search(r'```schedule_updates\s*(.*?)```',answer,re.S)
             if match:changefile.write_text(match.group(1))
         if checks and all(c['verified'] for c in checks) and changefile.exists():
@@ -133,20 +144,37 @@ def submit(desk,payload):
             names={t['id']:t['title'] for t in schedule_snapshot};labels={'due_date':'期日','start_date':'開始日','status':'状態','next_action':'次の作業'}
             answer+='\n\nアプリ内ガント更新結果（Google原本は未変更）:\n'+'\n'.join(names.get(r.get('task_id'),'対象タスク')+'：'+('反映済み / '+'、'.join(labels.get(k,k)+' '+str(v) for k,v in r['changes'].items()) if r.get('applied') else '未変更 / '+r.get('reason','確認が必要です。')) for r in schedule_results)
         files=artifacts(folder,task['id'])
+        review_files=list(files)
+        if workspace is not None:
+            from workspace import report,safe_file
+            try:
+                workspace_result=report(workspace,folder)
+                checks.append({'name':'複製対象の元コード','value':workspace_result['summary'],'verified':workspace_result['original_unchanged']})
+                for name in sorted(set(workspace_result.get('changed_files',[])) | {name for name in workspace['files'] if re.search(r'(^|/)(test_[^/]+|[^/]+[._](test|spec)\.[^/]+)$',name)}):
+                    if safe_file(folder/'workspace',name):review_files.append({'name':'workspace/'+name})
+            except (OSError,ValueError):
+                workspace_result={'original_unchanged':False,'summary':'作業コピーの差分と元コードの検証が未完了です。'}
+                checks.append({'name':'作業コピーの差分検証','value':workspace_result['summary'],'verified':False})
+            files=artifacts(folder,task['id'])
+            review_files=files+[f for f in review_files if f['name'].startswith('workspace/')]
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w',prefix='.workspace-check-',suffix='.json',dir=folder,delete=False) as proof:
+                json.dump({'origin':'Project Desk host checks after execution','original_copied_files_unchanged':workspace_result.get('original_unchanged',False),'changed_files':workspace_result.get('changed_files',[]),'unchanged_test_files':[name for name in workspace['files'] if re.search(r'(^|/)(test_[^/]+|[^/]+[._](test|spec)\.[^/]+)$',name) and name not in workspace_result.get('changed_files',[])]},proof,ensure_ascii=False)
+                review_files.append({'name':Path(proof.name).name})
         from review import run as review
-        review_result={'status':'unverified','summary':'実行が正常終了していないため、検品は実行していません。','checks':[],'independent':False}
+        review_result={'status':'unverified','summary':'実行または元コードの検証が完了していないため、検品は実行していません。','checks':[],'independent':False}
         if answer and checks and all(c['verified'] for c in checks):
             if job['review_required']:
                 with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
                 if current['status']=='作業中':
                     desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'作業中','next_action':'成果物を受信。別プロセスで依頼内容と照合し、検品しています。'})
-            try:review_result=review(folder,prompt,job,engines,env,files)
+            try:review_result=review(folder,prompt,{**job,'registered_workspace':workspace is not None and bool(workspace_result and workspace_result.get('original_unchanged'))},engines,env,review_files)
             except Exception:review_result={'status':'unverified','summary':'検品処理が停止しました。成果物の検証は未完了です。','checks':[],'independent':False}
         if job['review_required']:
             checks.append({'name':'別プロセスによる検品','value':review_result['summary'],'verified':review_result['status']=='reviewed'})
             if review_result['status']!='reviewed':reason=review_result['summary']
         failed=not answer or not checks or not checks[0]['verified']
-        receipt={'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
+        receipt={'workspace':workspace_result,'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
         (folder/'receipt.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
         with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
         if current['status']=='作業中':

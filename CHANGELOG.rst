@@ -118,3 +118,13 @@ Post-deployment viewport check
 -----------------------------
 
 * Reduced the project picker, conversation heading and composer spacing after the real 1280x720 screen showed too little space for messages. Kept the input anchored and the conversation independently scrollable.
+
+Registered source copies and authentication diagnostics
+-------------------------------------------------------
+
+* Added local-only registration of project Git repositories and bounded request-local working copies, preserving dirty working files while excluding credentials, symlinks and dependency/data directories.
+* Added original-file hash verification, text patches, changed-file review inputs and in-app copy/change summaries. Original checkouts and their Git metadata are not edited.
+* Distinguished background Keychain access failures from a confirmed logout. The SSH path still cannot read the login Keychain; a temporary GUI-context diagnostic did not establish successful authentication. No credentials were copied or reset.
+* Real isolated Mac mini execution fixed a two-file calculation fixture in the copy, passed the fixture's unit test, left originals unchanged and produced a patch. Independent review outcomes are recorded separately from successful execution.
+
+* Final validation for this milestone: 66 Python tests and six JavaScript test programs passed. Mac mini Python 3.9.6 also passed all 66 tests. The real isolated Codex workflow completed the source-copy fix, an independent read-only review/test rerun, original-file verification and patch generation. The new code is prepared for rollout; existing workspace parity remains incomplete.

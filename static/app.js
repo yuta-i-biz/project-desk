@@ -68,6 +68,7 @@ function verificationPanel(receipt){
  const labels={reviewed:'別プロセスの検品済み',issues:'修正が必要',unverified:'検証は未完了',not_required:'別プロセスの検品は未実施'};
  const box=E('details',{class:'supporting-files'},E('summary',{},'品質確認・作業範囲：'+(labels[review?.status]||'未確認')));
  if(review){box.append(E('p',{},review.summary||''));for(const c of review.checks||[])box.append(E('p',{},c.file+'：'+c.observation));if(review.scope)box.append(E('small',{},review.scope));}
+ if(receipt.workspace){box.append(E('p',{},receipt.workspace.summary));if(receipt.workspace.changed_files?.length)box.append(E('p',{},'変更したファイル：'+receipt.workspace.changed_files.join('、')));}
  if(receipt.runtime){box.append(E('p',{},receipt.runtime.scope));if(receipt.runtime.parity==='limited')box.append(E('small',{},'既存のVS Code環境と同じ操作がすべてできる状態には、まだ達していません。'));}
  return box;
 }

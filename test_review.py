@@ -29,3 +29,26 @@ class ReviewTests(unittest.TestCase):
    with patch('review.subprocess.run') as process:
     r=run(folder,'画像を作成',job,[{'engine':'Codex','available':True}],{},[{'name':'generation_prompts.json'}])
     self.assertEqual(r['status'],'issues');process.assert_not_called()
+
+class RegisteredReviewTests(unittest.TestCase):
+ def test_independent_runtime_review_needs_structured_execution(self):
+  for actual_event in (False,True):
+   with self.subTest(actual_event=actual_event),tempfile.TemporaryDirectory() as tmp:
+    folder=Path(tmp);(folder/'main.py').write_text('print(1)');(folder/'response.txt').write_text('tests passed')
+    def fake(command,**kw):
+     if command[1:3]==['login','status']:return subprocess.CompletedProcess(command,0,'ChatGPT','')
+     self.assertEqual(kw['env']['PYTHONDONTWRITEBYTECODE'],'1')
+     output=Path(command[command.index('--output-last-message')+1]);output.write_text(json.dumps({'status':'reviewed','summary':'確認済み','checks':[{'file':n,'kind':'code','observation':'内容を点検'} for n in ['main.py','response.txt']]}))
+     event={'type':'item.completed','item':{'type':'command_execution','command':'cd workspace && python3 -m unittest discover','exit_code':0,'aggregated_output':'Ran 1 test\nOK'}} if actual_event else {'type':'item.completed','item':{'type':'agent_message','text':'unittest OK'}}
+     kw['stdout'].write(json.dumps(event)+'\n');kw['stdout'].flush();return subprocess.CompletedProcess(command,0)
+    with patch('review.subprocess.run',side_effect=fake):r=run(folder,'コード修正',{'kind':'implementation','review_required':True,'registered_workspace':True},[{'engine':'Codex','available':True}],{},[{'name':'main.py'}])
+    self.assertEqual(r['status'],'reviewed' if actual_event else 'unverified')
+    if actual_event:self.assertEqual(r['tests'][0]['runner'],'unittest')
+ def test_unverified_explanation_is_preserved(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   folder=Path(tmp);(folder/'response.txt').write_text('done')
+   def fake(command,**kw):
+    if command[1:3]==['login','status']:return subprocess.CompletedProcess(command,0,'ChatGPT','')
+    Path(command[command.index('--output-last-message')+1]).write_text(json.dumps({'status':'unverified','summary':'実行記録が不足','checks':[]}));return subprocess.CompletedProcess(command,0)
+   with patch('review.subprocess.run',side_effect=fake):r=run(folder,'コード修正',{'kind':'implementation','review_required':True},[{'engine':'Codex','available':True}],{},[])
+   self.assertEqual(r['summary'],'実行記録が不足');self.assertEqual(r['status'],'unverified')
