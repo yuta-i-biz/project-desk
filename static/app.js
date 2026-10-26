@@ -110,31 +110,41 @@ function renderChat(){
  const available=chatDraft.engine==='おまかせ'?(state.data.engines||[]).some(e=>e.available):(state.data.engines||[]).find(e=>e.engine===chatDraft.engine)?.available;
  for(const e of state.data.engines||[])rail.append(E('div',{class:'provider-state'},E('strong',{},(e.available?'● ':'○ ')+e.engine),E('small',{},e.available?'接続確認済み':e.detail||'接続待ち')));
  rail.append(E('div',{class:'engine-state'},E('span',{class:'local-dot'}),available?(chatDraft.engine==='おまかせ'?'内容と接続状態からAIを自動選択':'選択中のAIは認証確認済み'):'AIの接続確認が必要'));
- const layout=E('div',{class:'chat-layout'},E('section',{class:'conversation'},E('div',{class:'chat-project-picker'},E('span',{},'案件'),select),thread,window.DeskVoice?.controls(state.data,chatDraft.project),form),rail);
+ const layout=E('div',{class:'chat-layout'},E('section',{class:'conversation'},E('div',{class:'chat-project-picker'},E('span',{},'案件'),select,E('button',{type:'button',class:'secondary',onclick:openBulkRequests},'複数案件に指示')),thread,window.DeskVoice?.controls(state.data,chatDraft.project),form),rail);
  clear($('#content'),layout);$('#visible-count').textContent='案件ごとに依頼・進捗・成果を保存';
 }
 
 const beforeDeadlines=renderContent;
 renderContent=function(){if(state.view==='deadlines'){document.body.classList.remove('chat-mode');renderDeadlines();}else beforeDeadlines();};
 function renderDeadlines(){
- const r=state.data.deadline_review||{};const root=E('div',{class:'deadline-review'});
- if(!r.projects){clear($('#content'),empty('期日の確認結果は未取得です。'));return;}
- root.append(E('div',{class:'overview-intro'},E('div',{class:'eyebrow'},'DEADLINES / ALL WORK'),E('h2',{},'遅れと、予定が組めない仕事。'),E('p',{},r.scope_note),E('small',{},'判定日 '+r.as_of+' / 元データ取得 '+date(r.captured_at,true))));
- root.append(E('div',{class:'deadline-metrics'},...['期限超過','本日期限','7日以内','期限不明'].map(k=>E('div',{},E('strong',{},r.counts[k]||0),E('span',{},k+'（行）')))));
- root.append(E('p',{class:'subtle'},'期限超過は記録上の判定です。実際に完了している場合は原本の状態確認が必要です。開始日・所要日数がないため遅延予測の確度は算定していません。'));
- const summary=E('section',{},E('h2',{},'案件ごとの期限と残作業'));
- for(const p of r.projects.filter(p=>!state.company||state.company==='モノ・ループ').filter(p=>p.project.toLowerCase().includes(state.query.toLowerCase()))){
-  const late=p.counts['期限超過']||0;const near=(p.counts['本日期限']||0)+(p.counts['7日以内']||0);const card=E('details',{class:'deadline-project'},E('summary',{},E('strong',{},p.project),E('span',{},'超過 '+late+' / 7日以内 '+near+' / 期日不明 '+(p.counts['期限不明']||0))),E('p',{class:'subtle'},'シートの終了予定 '+p.deadline+'（タスク期日の最大値。約束した納期ではありません）'));
-  for(const t of r.tasks.filter(t=>t.project_id===p.id&&['期限超過','本日期限','7日以内','期限不明'].includes(t.risk)))card.append(E('a',{class:'deadline-task',href:t.url,target:'_blank',rel:'noopener'},E('span',{},t.risk+' · '+(t.deadline||'期日なし')),E('strong',{},t.title),E('small',{},t.source_id+' / '+(t.status||'状態未設定'))));
-  summary.append(card);
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const groups=window.DeskDeadlines.summarize(state.data,today,state.company,state.query);const root=E('div',{class:'deadline-review'});
+ root.append(E('div',{class:'overview-intro'},E('div',{class:'eyebrow'},'COMPANY / ACTIVITY / DEADLINES'),E('h2',{},'会社・活動ごとの遅れ'),E('p',{},'判定日 '+today+'。記録上で未完了かつ期限を過ぎたタスクを案件ごとに表示します。AI利用の有無は問いません。'),E('p',{class:'subtle'},'日付は日本時間で判定します。元資料の更新が止まっている場合、実際の完了状況は確認が必要です。期日不明・タスク未登録は遅延と断定しません。')));
+ const picker=E('select',{'aria-label':'会社・活動で絞り込む',onchange:e=>{state.company=e.target.value;render();}},E('option',{value:''},'すべての会社・活動'),...[...new Set(state.data.projects.map(p=>p.company))].sort().map(c=>E('option',{value:c},c)));picker.value=state.company;root.append(picker);
+ let total=0;
+ for(const g of groups){const lateProjects=g.projects.filter(p=>p.late).length;const section=E('section',{class:'company-delays'},E('h2',{},g.company),E('div',{class:'deadline-metrics'},E('div',{},E('strong',{},lateProjects),E('span',{},'期限超過のある案件')),E('div',{},E('strong',{},g.late),E('span',{},'期限超過タスク')),E('div',{},E('strong',{},g.soon),E('span',{},'本日〜7日以内')),E('div',{},E('strong',{},g.unknown),E('span',{},'期日不明'))));
+ for(const p of g.projects){const card=E('details',{class:'deadline-project',...(p.late?{open:''}:{})},E('summary',{},E('strong',{},p.name),E('span',{},p.unassessed?'タスク未登録・日程未確認':'超過 '+p.late+' / 7日以内 '+p.soon+' / 期日不明 '+p.unknown)),E('button',{class:'text-button',onclick:()=>openDetail(p.id)},'案件・次の作業を開く ↗'));
+ for(const t of p.tasks){total++;const row=E('article',{class:'deadline-task'},E('span',{},t.risk+' · '+(t.due||'期日未設定')+(t.days_late?' · '+t.days_late+'日超過':'')),E('strong',{},t.title),E('small',{},t.status+' / 記録更新 '+date(t.updated,true)),E('p',{},t.blocker||t.next_action||'次の作業は未登録'));if(t.read_only&&t.source_url)row.append(E('a',{href:t.source_url,target:'_blank',rel:'noopener'},'原本を確認 ↗'));else row.append(E('button',{class:'text-button',onclick:()=>editTask(t)},'状態・期日を更新'));card.append(row);}section.append(card);}root.append(section);
  }
- root.append(summary,E('h2',{},'期日が確定していない未完了タスク'));
- for(const t of r.unknown_tasks||[])root.append(E('a',{class:'deadline-task',href:t.url,target:'_blank',rel:'noopener'},E('span',{},t.project+' / '+t.source_id),E('strong',{},t.title),E('small',{},t.deadline?'期日欄：'+t.deadline:'期日欄が空欄')));
- root.append(E('h2',{},'ガントとして進行を追いにくい箇所'));
- for(const i of r.issues||[])root.append(E('article',{class:'result-card'},E('div',{class:'eyebrow'},i.scope),E('h3',{},i.title),E('p',{},i.evidence),E('p',{class:'subtle'},'対応案：'+i.action)));
- root.append(E('h2',{},'期日・工程が管理画面に未登録の案件'),E('p',{class:'subtle'},'期限なしと断定した一覧ではありません。台帳の記載と実際の稼働状況を照合し、現行案件か確認する必要があります。'));
- for(const p of r.unassessed_projects||[]){if(state.company&&state.company!==p.company)continue;root.append(E('details',{class:'deadline-project'},E('summary',{},E('strong',{},p.company+' / '+p.name),E('span',{},'日程未登録')),E('p',{},p.next_action),E('button',{class:'text-button',onclick:()=>openDetail(p.id)},'取得済みの記録を開く ↗')));}
- clear($('#content'),root);$('#visible-count').textContent='ML 26案件・194行 / 全件AI利用の有無で絞らず点検';
+ if(!groups.length)root.append(empty('条件に合う遅れ・期日確認の対象はありません。'));
+ const r=state.data.deadline_review||{};if(r.issues?.length&&(!state.company||state.company==='モノ・ループ')){const audit=E('details',{class:'deadline-project'},E('summary',{},'元ガントの構造点検（取得時点 '+(r.as_of||'不明')+'）'));for(const i of r.issues)audit.append(E('p',{},i.scope+' / '+i.title+'：'+i.evidence+' 対応案：'+i.action));root.append(audit);}
+ clear($('#content'),root);$('#visible-count').textContent=groups.length+' 会社・活動 / 要確認タスク '+total+'件';
 }
 
 function scheduleFields(t={}){return [field('due_date','期日','date',t.due_date||''),field('start_date','開始予定日','date',t.start_date||''),field('effort_days','所要日数','text',t.effort_days||'',null,'未確定のときは空欄。勝手に期日は決めません。'),field('depends_on','先に終える作業','select',t.depends_on||'',[['','前工程なし・未確定'],...state.data.tasks.filter(x=>!x.read_only&&x.project_id===t.project_id&&x.id!==t.id).map(x=>[x.id,x.title])]),field('deadline_reason','期日未設定の理由・確認先','text',t.deadline_reason||''),field('completion_criteria','何をもって完了とするか','textarea',t.completion_criteria||'')];}
+
+let bulkDraft=[];
+function openBulkRequests(){
+ const projects=state.data.projects.filter(p=>!p.reference_only);if(!bulkDraft.length)bulkDraft.push({project_id:chatDraft.project||projects[0]?.id||'',prompt:'',sent:false});
+ let sending=false;const dialog=E('dialog',{class:'bulk-dialog'});dialog.addEventListener('cancel',e=>{if(sending)e.preventDefault();});const rows=E('div');const notice=E('p',{role:'status',class:'subtle'});const submit=E('button',{class:'primary',type:'button'},'まとめて依頼を送る');
+ const draw=()=>{clear(rows);bulkDraft.forEach((draft,i)=>{const select=E('select',{'aria-label':`依頼${i+1}の案件`,onchange:e=>draft.project_id=e.target.value},...projects.map(p=>E('option',{value:p.id},p.company+' / '+p.name)));select.value=draft.project_id;select.disabled=draft.sent;
+ const input=E('textarea',{'aria-label':`依頼${i+1}の内容`,rows:'3',maxlength:'8000',placeholder:'この案件に頼みたいこと',oninput:e=>draft.prompt=e.target.value});input.value=draft.prompt;input.disabled=draft.sent;
+ rows.append(E('section',{class:'bulk-row'},E('strong',{},'依頼 '+(i+1)),select,input,E('p',{role:'status'},draft.sent?'✓ 受付済み：'+draft.task_id:(draft.error||'')),E('button',{type:'button',class:'text-button',disabled:draft.sent?'':null,onclick:()=>{bulkDraft.splice(i,1);draw();}},'この依頼を外す')));});};
+ const add=E('button',{class:'secondary',type:'button',onclick:()=>{if(bulkDraft.length>=6){notice.textContent='一度に6件まで送れます。';return;}bulkDraft.push({project_id:projects[0]?.id||'',prompt:'',sent:false});draw();}},'＋ 別の案件の依頼を追加');
+ submit.onclick=async()=>{const pending=bulkDraft.filter(d=>!d.sent);if(!pending.length||pending.some(d=>!d.project_id||!d.prompt.trim())){notice.textContent='案件と依頼内容をすべて入力してください。';return;}sending=true;submit.disabled=true;add.disabled=true;rows.querySelectorAll('input,select,textarea,button').forEach(e=>e.disabled=true);notice.textContent='案件ごとに依頼を受け付けています…';
+ for(const d of pending){try{const response=await api('/api/run',{project_id:d.project_id,engine:'おまかせ',prompt:d.prompt});d.sent=true;d.task_id=response.task_id||response.task?.id||response.id||'タスクに保存済み';d.error='';}catch(e){d.error='受付を確認できません：'+e.message;notice.textContent='一部の受付を確認できません。案件の履歴を確認してから再送してください。';break;}}
+ sending=false;draw();submit.disabled=true;add.disabled=false;notice.textContent=bulkDraft.filter(d=>d.sent).length+'件を受付済み。AI処理は順番に実行し、各案件の会話へ結果を戻します。未受付の依頼は入力を保持しています。';await load(true);
+ };
+ dialog.append(E('div',{class:'dialog-header'},E('h2',{},'複数案件にまとめて指示'),E('button',{class:'icon-button',type:'button',onclick:()=>{if(!sending)dialog.close();}},'×')),E('p',{},'案件ごとに依頼を入力してください。AIはおまかせで選びます。処理は順番に進み、結果は各案件に分かれて残ります。'),rows,add,submit,notice);
+ dialog.addEventListener('close',()=>{bulkDraft=bulkDraft.filter(d=>!d.sent);dialog.remove();});document.body.append(dialog);draw();dialog.showModal();
+}

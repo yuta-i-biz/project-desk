@@ -53,3 +53,11 @@ Voice request controls
 * Prevented automatic submission after recognition errors or page hiding.
 * Verified four recognition lifecycle cases plus five existing summary checks.
 * Physical mobile microphone testing remains pending.
+
+Company deadlines and multiple project requests
+----------------------------------------------
+
+* Grouped overdue tasks and projects by company/activity with filters and source timestamps.
+* Separated missing dates and unassessed projects from overdue work.
+* Added up to six project-specific requests in one submission, queued for sequential processing.
+* Verified date formats, company isolation, completion exclusion and bulk request payload separation. Python: 18 tests passed.
