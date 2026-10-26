@@ -29,6 +29,12 @@ class DeskTests(unittest.TestCase):
         self.desk=a.Desk(self.home,self.root/'data')
         self.pid=self.desk.snapshot()['projects'][0]['id']
     def tearDown(self):self.temp.cleanup()
+    def test_cache_invalidation_near_monotonic_origin(self):
+        from unittest.mock import patch
+        with patch.object(a.time,'monotonic',return_value=1):
+            self.desk.collect(force=True)
+            created=self.desk.mutate('project',{'name':'新規案件','company':'会社B'})
+            self.assertIn(created['id'],self.desk.project_ids())
     def create(self):return self.desk.mutate('create',{'project_id':self.pid,'title':'確認する仕事','next_action':'内容を検証'})
     def test_exact_match_and_source_preservation(self):
         before=hashlib.sha256(self.note.read_bytes()).hexdigest()

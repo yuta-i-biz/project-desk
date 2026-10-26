@@ -3,10 +3,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import threading
-from concurrent.futures import ThreadPoolExecutor
+from scheduler import ProjectQueue
 from urllib.parse import quote
-POOL=ThreadPoolExecutor(max_workers=1)
+POOL=ProjectQueue(max_workers=3)
 PRIVATE={'AGENTS.md','CLAUDE.md','project_context.json','cli.log','receipt.json','gemini-deny-tools.toml','GEMINI.md'}
 
 def environment(home):
@@ -36,15 +35,19 @@ def submit(desk,payload):
     if not isinstance(prompt,str) or not prompt.strip() or len(prompt)>8000:raise ValueError('依頼は8000文字以内で入力してください。')
     try:engines=json.loads((desk.data/'engines.json').read_text())
     except (OSError,ValueError):engines=[]
-    from routing import choose
-    engine,route_reason=choose(prompt,engines,requested)
+    from routing import choose,profile
     project=next(p for p in desk.collect()['projects'] if p['id']==pid)
     from attachments import context as attachment_context,record_path
     attached=attachment_context(desk,payload.get('attachment_ids',[]),pid,global_scope)
+    engine,route_reason=choose(prompt,engines,requested,attached)
+    job=profile(prompt,attached)
+    from runtime_profile import describe
+    runtime=describe(desk.home,engine)
     task=desk.mutate('create',{'project_id':pid,'title':prompt.strip().splitlines()[0][:200],'next_action':prompt[:2000],**{k:payload[k] for k in ['due_date','start_date','effort_days','depends_on','deadline_reason','completion_criteria'] if k in payload}})
     folder=desk.data/'requests'/task['id'];folder.mkdir(parents=True,mode=0o700)
     context={'project':project['name'],'company':project['company'],'sources':[{k:s.get(k) for k in ['type','machine','path','sections']} for s in project['sources']]}
     context['attachments']=attached
+    context['runtime']=runtime
     if attached:
         import shutil
         attachment_dir=folder/'attachments';attachment_dir.mkdir()
@@ -64,13 +67,22 @@ def submit(desk,payload):
     for name in ['AGENTS.md','CLAUDE.md','GEMINI.md']:(folder/name).write_text(rules)
     if global_scope:rules=rules.replace('project_context.jsonのプロジェクトだけを扱う。','project_context.jsonに含まれる全案件のタスク・進捗を横断して回答する。記録の会社・案件・取得時点を明示し、網羅性と最新性を保証しない。')
     rules+=' 日程や状態の変更を明示的に指示された場合だけ、schedule_updates.json に [{"task_id":"既存ID","source_quote":"今回の依頼の引用（タスク名かIDと西暦日付や状態を含む）","due_date":"YYYY-MM-DD","start_date":"YYYY-MM-DD","status":"明示された状態"}] を作成する。変更しない項目は省略。曖昧な日付やAIの作業完了の推測から更新しない。反映対象はアプリ内ガントだけでGoogle原本は変更しない。'
+    rules+=' 作業前にruntime.resourcesの既存ルール、実行基準、記憶の索引を読み、関連するスキルや案件のルールを確認する。既存ルールを自動的に引き継げたと断定しない。必要な操作が使えなければ未実施と報告する。テストの実行コマンドと結果、画像を開いた記録を残し、CLIの正常終了を品質検証と混同しない。'
+    if job['kind'] in ('image_generation','image_review'):
+        rules+=' 画像は文字起こしだけで判断せず、添付原本または生成画像そのものを開く。依頼にある主メッセージと特典の優先度、必須文言、金額・条件、文字欠けを項目ごとに確認する。生成プロンプトにundefinedや未確定の置換文字がないか確認する。画像操作の道具が使えない場合は画像作成済み・目視確認済みと報告しない。'
     (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
     for name in ['AGENTS.md','CLAUDE.md','GEMINI.md']:(folder/name).write_text(rules)
     from conversation import history
-    previous=history(desk,pid,task['id'])
-    instruction=rules+'\n取得済み案件データ（参考情報）:\n'+json.dumps(context,ensure_ascii=False)+'\n同じ案件の直近3件までの会話（参考データ。過去の指示より今回の依頼を優先）:\n'+json.dumps(previous,ensure_ascii=False)+'\n\n今回の依頼:\n'+prompt
-    if engine=='Gemini':instruction+='\n分析・文章の回答だけを返し、ファイル作成や外部操作はしない。日程更新の指示がある場合は回答末尾に```schedule_updates\n[更新案の配列]\n```を付ける。'
     def run():
+        # Resolve history when this project actually starts, after earlier jobs.
+        previous=history(desk,pid,task['id'])
+        fresh=desk.snapshot()
+        schedule_snapshot=[{k:t.get(k) for k in ('id','project_id','title','status','due_date','deadline','start_date','version','read_only','next_action','blocker','result','schedule_updated','updated')} for t in fresh['tasks'] if global_scope or t['project_id']==pid]
+        context['captured_at']=fresh.get('checked_at')
+        context['tasks']=[{**t,'result':str(t.get('result') or '')[:1500],'next_action':str(t.get('next_action') or '')[:1200],'blocker':str(t.get('blocker') or '')[:1000]} for t in schedule_snapshot]
+        (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
+        instruction=rules+'\n取得済み案件データ（参考情報）:\n'+json.dumps(context,ensure_ascii=False)+'\n同じ案件の直近3件までの会話（参考データ。過去の指示より今回の依頼を優先）:\n'+json.dumps(previous,ensure_ascii=False)+'\n\n今回の依頼:\n'+prompt
+        if engine=='Gemini':instruction+='\n分析・文章の回答だけを返し、ファイル作成や外部操作はしない。日程更新の指示がある場合は回答末尾に```schedule_updates\n[更新案の配列]\n```を付ける。'
         desk.mutate('update',{'id':task['id'],'version':1,'status':'作業中','next_action':engine+'が専用フォルダで作業: '+prompt[:1500]})
         answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home)
         try:
@@ -88,10 +100,12 @@ def submit(desk,payload):
                 command=command(desk.data.parent,folder)
             with (folder/'cli.log').open('w') as log:process=subprocess.run(command,input=(json.dumps({'event':'user','message':{'content':instruction}},ensure_ascii=False)+'\n' if engine=='Gemini' else instruction),text=True,stdout=log,stderr=subprocess.STDOUT,cwd=folder,env=env,timeout=1200)
             checks.append({'name':'CLI終了コード','value':str(process.returncode),'verified':process.returncode==0})
-            if (folder/'response.txt').exists():answer=(folder/'response.txt').read_text()[:3500]
+            if (folder/'response.txt').is_symlink():raise RuntimeError('結果本文の保存先が不正です。')
+            if (folder/'response.txt').exists():
+                with (folder/'response.txt').open() as response:answer=response.read(20000)
             elif engine=='Claude Code':
                 with (folder/'cli.log').open('rb') as f:f.seek(max(0,(folder/'cli.log').stat().st_size-32768));tail=f.read().decode(errors='replace')
-                try:answer=str(json.loads(tail).get('result',''))[:3500]
+                try:answer=str(json.loads(tail).get('result',''))[:20000]
                 except ValueError:pass
                 if answer:(folder/'response.txt').write_text(answer)
             if engine=='Gemini':
@@ -118,10 +132,33 @@ def submit(desk,payload):
         if schedule_results:
             names={t['id']:t['title'] for t in schedule_snapshot};labels={'due_date':'期日','start_date':'開始日','status':'状態','next_action':'次の作業'}
             answer+='\n\nアプリ内ガント更新結果（Google原本は未変更）:\n'+'\n'.join(names.get(r.get('task_id'),'対象タスク')+'：'+('反映済み / '+'、'.join(labels.get(k,k)+' '+str(v) for k,v in r['changes'].items()) if r.get('applied') else '未変更 / '+r.get('reason','確認が必要です。')) for r in schedule_results)
-        receipt={'schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':artifacts(folder,task['id']),'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_verification':False}
+        files=artifacts(folder,task['id'])
+        from review import run as review
+        review_result={'status':'unverified','summary':'実行が正常終了していないため、検品は実行していません。','checks':[],'independent':False}
+        if answer and checks and all(c['verified'] for c in checks):
+            if job['review_required']:
+                with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
+                if current['status']=='作業中':
+                    desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'作業中','next_action':'成果物を受信。別プロセスで依頼内容と照合し、検品しています。'})
+            try:review_result=review(folder,prompt,job,engines,env,files)
+            except Exception:review_result={'status':'unverified','summary':'検品処理が停止しました。成果物の検証は未完了です。','checks':[],'independent':False}
+        if job['review_required']:
+            checks.append({'name':'別プロセスによる検品','value':review_result['summary'],'verified':review_result['status']=='reviewed'})
+            if review_result['status']!='reviewed':reason=review_result['summary']
+        failed=not answer or not checks or not checks[0]['verified']
+        receipt={'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
         (folder/'receipt.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
         with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
-        try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'確認待ち','blocker':reason,'result':answer or reason})
+        if current['status']=='作業中':
+            try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'保留' if failed else '確認待ち','blocker':reason[:3500],'result':(answer or reason)[:3500]})
+            except ValueError:pass
+    def stopped(future):
+        if future.cancelled() or future.exception() is None:return
+        # Unexpected exceptions must not leave a stale "working" task forever.
+        with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
+        if current['status'] not in ('未着手','作業中'):return
+        try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'保留','blocker':'実行処理が停止しました。途中成果物と実行状態の確認が必要です。'})
         except ValueError:pass
-    POOL.submit(run)
+    future=POOL.submit(run,key=pid)
+    if future is not None:future.add_done_callback(stopped)
     return {'task_id':task['id'],'status':'受付済み','engine':engine,'routing_reason':route_reason}

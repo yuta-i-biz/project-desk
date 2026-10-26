@@ -1,3 +1,7 @@
 const assert=require('node:assert/strict');const {summarize,title}=require('./static/request_summary.js');
 let t={title:'https://docs.example.test/source',status:'確認待ち',receipt:{summary:'利用者さん、**クーポン6枚を下書きにしました。**\n- **未解決**：有効期限の確認と印刷仕上げ。',artifacts:[{name:'assets/logo.png'},{name:'build.py'},{name:'output/review.pdf'},{name:'output/editable.zip'},{name:'previews/contact.png'},{name:'__pycache__/x.pyc'}]}};
 let r=summarize(t);assert.equal(title(t),'クーポン6枚を下書きにしました');assert.equal(r.primary[0].name,'output/review.pdf');assert(!r.primary.some(x=>x.name==='assets/logo.png'));assert.equal(r.primary.length,3);assert.equal(r.remainingWork,'有効期限の確認と印刷仕上げ。');assert.equal(r.label,'成果物あり・確認待ち');assert(!r.remaining.some(x=>x.name.includes('__pycache__')));assert.equal(summarize({title:'依頼',status:'未着手'}).label,'受付済み・順番待ち');console.log('Request summaries: URL titles, primary deliverables, remaining work, hidden files and queued states passed');
+for(const [status,label] of [['unverified','検証未完了・確認待ち'],['issues','修正が必要・確認待ち']])assert.equal(summarize({title:'依頼',status:'確認待ち',receipt:{review:{status}}}).label,label);
+assert.equal(summarize({title:'依頼',status:'保留',receipt:{execution_status:'failed'}}).label,'実行停止・要対応');
+assert.equal(summarize({title:'依頼',status:'完了',receipt:{execution_status:'failed'}}).label,'完了');
+console.log('Quality states: review incomplete, issues, execution failure and explicit completion passed');

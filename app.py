@@ -91,6 +91,7 @@ class Desk:
         c = sqlite3.connect(self.db, timeout=15); c.row_factory = sqlite3.Row
         c.execute('PRAGMA foreign_keys=ON'); return c
     def invalidate(self):
+        self.cache = None
         self.cache_at = 0
     def collect(self, force=False):
         with self.lock:

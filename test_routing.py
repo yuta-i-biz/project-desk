@@ -18,4 +18,20 @@ class RoutingTests(unittest.TestCase):
   with self.assertRaises(ValueError):choose('要約',self.ready('Codex'),'不明')
  def test_json_with_startup_notice(self):
   self.assertEqual(response('Loaded cached credentials.\n{"response":"done","stats":{}}'),'done')
+
+class CapabilityRoutingTests(unittest.TestCase):
+ def test_image_generation_cannot_fall_to_text_adapter(self):
+  ready=[{'engine':n,'available':True} for n in ['Codex','Claude Code','Gemini']]
+  self.assertEqual(choose('新しい画像を2案作成して',ready)[0],'Codex')
+  with self.assertRaises(ValueError):choose('クーポン画像を修正',ready,'Gemini')
+  with self.assertRaises(ValueError):choose('クーポン画像を修正',ready[1:])
+ def test_image_attachment_changes_analysis_route(self):
+  ready=[{'engine':n,'available':True} for n in ['Claude Code','Gemini']]
+  self.assertEqual(choose('比較して',ready,attachments=[{'name':'scan.PNG'}])[0],'Claude Code')
+ def test_restricted_claude_cannot_claim_runtime_testing(self):
+  with self.assertRaises(ValueError):choose('コードの実装とテスト',[{'engine':'Claude Code','available':True}])
+ def test_image_prompt_writing_is_text_work(self):
+  from routing import profile
+  self.assertFalse(profile('画像生成のプロンプトを作成')['review_required'])
+
 if __name__=='__main__':unittest.main()

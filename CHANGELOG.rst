@@ -102,3 +102,14 @@ Manual project visibility fix
 * サーバー再起動後も下書きを保持し、送信直前に同一サイトの接続確認情報を更新。確認失敗時は送信せず、二重送信もしない。
 * 長いPDF・画像の閲覧中も、ファイル名と閉じるボタンを上部に固定。
 * 古い接続情報、更新失敗、単回送信の自動検証と実画面のスクロール確認を実施。
+
+2026-10-26 AI selection, review and parallel execution
+-----------------------------------------------------
+
+* Route selected image attachments and image generation requests only to adapters exposing the required operations. Keep restricted adapters from silently replacing implementation-plus-test work with text output.
+* Run up to three projects concurrently, keep each project's requests sequential, and refresh conversation and schedule context when execution starts.
+* Add a separate read-only Codex review with actual image attachments and file fingerprints. Distinguish review findings, incomplete verification and execution failure in chat and results. Keep review sessions ephemeral and private.
+* Preserve longer responses and expose configured Claude resource names without copying credentials. Configuration presence does not establish connection availability or full workspace parity.
+* Fix invalidation of project snapshots when the monotonic clock is near its origin, reproduced on the Mac mini's Python 3.9.6.
+* Validation: 51 Python tests passed locally and in an isolated Mac mini package; all six JavaScript test programs passed. Live synthetic-image checks accepted a matching blue square and rejected a blue square incorrectly described as red.
+* This release also includes the previously prepared waiting-task navigation, unified chat scrolling and expandable input controls. Full existing-workspace execution and background Claude authentication remain incomplete.

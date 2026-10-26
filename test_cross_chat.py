@@ -22,5 +22,5 @@ class CrossChatTests(unittest.TestCase):
    def runner(command,**kw):
     if command[1:3]==['login','status']:return subprocess.CompletedProcess(command,0,'Logged in using ChatGPT','')
     folder=kw['cwd'];(folder/'response.txt').write_text('更新案を作成しました。');(folder/'schedule_updates.json').write_text(json.dumps([{'task_id':t['id'],'source_quote':quote,'due_date':'2026-11-02'}]));return subprocess.CompletedProcess(command,0)
-   with patch.object(execution.POOL,'submit',side_effect=lambda fn:fn()),patch.object(execution.subprocess,'run',side_effect=runner):r=execution.submit(d,{'project_id':p,'prompt':quote})
+   with patch.object(execution.POOL,'submit',side_effect=lambda fn,**kw:fn()),patch.object(execution.subprocess,'run',side_effect=runner):r=execution.submit(d,{'project_id':p,'prompt':quote})
    task=next(x for x in d.snapshot()['tasks'] if x['id']==t['id']);self.assertEqual(task['due_date'],'2026-11-02');receipt=json.loads((d.data/'requests'/r['task_id']/'receipt.json').read_text());self.assertTrue(receipt['schedule_updates'][0]['applied'])

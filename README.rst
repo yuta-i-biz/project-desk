@@ -68,3 +68,16 @@ Request outcomes and projects
 -----------------------------
 
 Use the request progress menu to see final deliverables and remaining work. An individual request can be opened with /?view=results&task=TASK_ID. New projects are available from desktop and mobile menus and require choosing a company/activity; a new company/activity can also be entered. Existing same-name projects within the same company are rejected to avoid duplicate records. PDF previews render the first 20 pages as images for browser compatibility.
+
+Execution quality milestone
+---------------------------
+
+Routing now checks the current adapter's supported operations, including selected image attachments. The text-only Gemini adapter is excluded from image inspection and image generation. The restricted Claude adapter is excluded from jobs requiring a shell test runner; this restriction is reported rather than silently weakening the job. This is an adapter capability inventory, not a live test of every installed tool.
+
+Up to three different projects may run concurrently. Requests within one project remain sequential; waiting requests do not occupy workers. Recent conversation context and schedule snapshots are refreshed when a queued request starts. Unexpected execution errors are recorded as paused work.
+
+Image and implementation jobs request a separate Codex read-only review after successful generation, using the existing subscription login. This consumes subscription usage and can add up to five minutes. Missing authentication, unavailable reviewers, malformed results, missing image inputs or per-image findings, and changing output files remain unverified. Actual image files are attached to the review invocation, with file hashes recorded in the receipt. Per-image findings must cover every output image; model prose alone without image input cannot establish visual inspection. A code review is static review and does not prove that runtime tests passed. Review logs remain private and are not served as artifacts.
+
+The UI distinguishes execution failure, review findings, and incomplete verification. User-level Claude resources and configured integration names are inventoried without copying tokens or server configuration values. User-level MCP settings are inherited by Claude Code itself; the built-in --tools restriction does not disable MCP tools. Actual connections and project-level settings still require verification. Existing hooks are not a universal enforcement boundary for every AI.
+
+Parity with the existing VS Code workspace remains incomplete: project workspace isolation, native command/MCP capability checks, GUI Keychain access for the background worker, and end-to-end image review on the Mac mini remain outstanding. This milestone does not enable direct edits to existing business files or deploy the running app.
