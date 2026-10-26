@@ -70,3 +70,13 @@ Cross-project chat and connected gantt
 * Added app-local gantt charts and validated explicit user-backed date/status updates from AI receipts.
 * Kept source Google documents unchanged using local schedule overrides for imported tasks.
 * Verified 24 Python tests, JS checks, browser navigation/search, and real Codex start/due date updates on an isolated Mac mini test project.
+
+Files, Drive storage and in-app artifact previews
+------------------------------------------------
+
+* Added authenticated 50 MB file intake, project classification and private Drive storage under Project Desk/company/project.
+* Added bounded text, modern Office, PDF and image OCR reading; unsupported files remain stored with explicit status.
+* Added selected attachments to project AI requests with project isolation.
+* Added inline image/SVG/PDF/text/table/Office-content previews and sandboxed HTML previews.
+* Added configurable company aliases without changing project IDs or source ledgers.
+* Verified 34 Python tests, browser preview/file controls, native PDF/image OCR, and real private Drive upload with byte verification.

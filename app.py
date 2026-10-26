@@ -14,7 +14,7 @@ import threading
 import time
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse,parse_qs,quote
+from urllib.parse import urlparse,parse_qs,quote,unquote
 
 ROOT = Path(__file__).resolve().parent
 JST = dt.timezone(dt.timedelta(hours=9))
@@ -255,6 +255,15 @@ class Desk:
             for item in remote.get('imported_tasks',[]) if isinstance(remote,dict) else []:
                 if canonical_ml and item.get('type')=='タスクガント':continue
                 imported.append({**item,'project_id':bindings.get(item['id'])})
+            overrides=read_json(self.data/'company_overrides.json',{})
+            for p in projects.values():
+                old=p.get('company','')
+                if old in overrides:
+                    p['company']=overrides[old]
+                    p['activity']=old
+                    if old not in p['name']:p['name']=old+' / '+p['name']
+            for item in unlinked:
+                if item.get('company') in overrides:item['company']=overrides[item['company']]
             self.cache={'projects':list(projects.values()),'unlinked':sorted(unlinked,key=lambda s:s['updated'],reverse=True),'imported_tasks':imported,'sheet_tasks':sheet_tasks,
                 'sources':{'ledger_files':sum(s['type']=='案件台帳' for s in sources),'board_projects':sum(s['type']=='進捗ボード' for s in sources),
                            'claude_sessions':sum(s['type']=='Claude Code' for s in sessions),'codex_sessions':sum(s['type']=='Codex' for s in sessions),
@@ -290,8 +299,9 @@ class Desk:
                 key=normalized(row['company'])+'/'+normalized(row['project_name'])
                 health_rows.append({**row,'project_id':session_projects.get(row['session_id']) or exact.get(key)})
         health={'sources':[{k:v for k,v in h.items() if k!='rows'} for h in health_sources], 'rows':health_rows}
+        from attachments import public_records
         from chat_schedule import overlay
-        return {**base,'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        return {**base,'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),
@@ -402,12 +412,20 @@ class Handler(BaseHTTPRequestHandler):
                 if getattr(self.server,'remote_access',False):return self.send_data(403,{'error':'接続コードは元のMacから確認してください。'})
                 return self.send_data(200,{'code':self.server.desk.access['code'],'url':read_json(self.server.desk.data/'network.json',{}).get('origin')})
             if route.startswith('/api/') and route!='/api/health' and not self.authorized():return self.send_data(401,{'error':'接続コードを入力してください。'})
-            if route=='/api/artifact':
+            if route in ('/api/artifact','/api/artifact-preview'):
                 query=parse_qs(urlparse(self.path).query);tid=query.get('task_id',[''])[0];name=query.get('file',[''])[0]
                 if not re.fullmatch(r'task-[0-9a-f]+',tid):return self.send_data(404,{'error':'成果物が見つかりません。'})
                 folder=(self.server.desk.data/'requests'/tid).resolve();path=(folder/name).resolve()
                 from execution import PRIVATE
                 if not path.is_relative_to(folder) or not path.is_file() or path.name in PRIVATE:return self.send_data(404,{'error':'成果物が見つかりません。'})
+                if any(part.startswith('.') or part=='__pycache__' for part in path.relative_to(folder).parts):return self.send_data(404,{'error':'成果物が見つかりません。'})
+                if route=='/api/artifact-preview':
+                    from previews import describe,RAW,MAX_PREVIEW
+                    raw_url='/api/artifact-preview?task_id='+quote(tid)+'&file='+quote(name)+'&raw=1'
+                    if query.get('raw')==['1']:
+                        if path.stat().st_size>MAX_PREVIEW or path.suffix.lower() not in RAW:return self.send_data(415,{'error':'画面内表示には対応していません。'})
+                        body=path.read_bytes();self.send_response(200);self.send_header('Content-Type',RAW[path.suffix.lower()]);self.send_header('Content-Disposition','inline');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Referrer-Policy','no-referrer');self.send_header('Content-Security-Policy',"default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"+('; sandbox' if path.suffix.lower() in ('.html','.htm') else ''));self.end_headers();self.wfile.write(body);return
+                    return self.send_data(200,describe(path,raw_url,ROOT))
                 self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(path.name));self.send_header('Content-Length',str(path.stat().st_size));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
                 with path.open('rb') as stream:
                     while True:
@@ -434,9 +452,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_data(403,{'error':'操作元を確認できません。画面を開き直してください。'})
         try:
             length=int(self.headers.get('Content-Length','0'))
+            route=urlparse(self.path).path
+            if route=='/api/files/upload':
+                if not self.authorized():return self.send_data(401,{'error':'接続コードを入力してください。'})
+                from attachments import MAX_FILE,receive
+                if length<=0 or length>MAX_FILE:return self.send_data(413,{'error':'ファイルは1件50MBまでです。'})
+                pid=parse_qs(urlparse(self.path).query).get('project_id',[''])[0]
+                if pid and pid not in self.server.desk.project_ids():return self.send_data(400,{'error':'保存先の案件を確認してください。'})
+                body=self.rfile.read(length)
+                if len(body)!=length:return self.send_data(400,{'error':'受信が途中で途切れました。ファイルを再選択してください。'})
+                result=receive(self.server.desk,unquote(self.headers.get('X-File-Name','')),body,pid)
+                return self.send_data(200,result)
             if length<=0 or length>MAX_BODY:return self.send_data(413,{'error':'入力内容が大きすぎます。'})
             payload=json.loads(self.rfile.read(length))
-            route=urlparse(self.path).path
             if route=='/api/login':
                 desk=self.server.desk
                 with desk.lock:
@@ -451,6 +479,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Set-Cookie','desk_session='+desk.access['session']+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800'+secure)
                 self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b'{"ok":true}');return
             if not self.authorized():return self.send_data(401,{'error':'接続コードを入力してください。'})
+            if route=='/api/files/retry':
+                from attachments import record_path,POOL,store_drive
+                if not record_path(self.server.desk,payload.get('id')).exists():return self.send_data(404,{'error':'添付が見つかりません。'})
+                POOL.submit(store_drive,self.server.desk,payload['id']);return self.send_data(200,{'ok':True})
             if route=='/api/refresh':
                 if read_json(self.server.desk.data/'node.json',{}).get('enable_user_requests'):
                     from auth_status import refresh
@@ -500,6 +532,8 @@ def main():
                 sync(desk.data);desk.invalidate()
                 if stop_sync.wait(60):break
         threading.Thread(target=refresh_remote,daemon=True).start()
+    from attachments import resume_pending
+    resume_pending(desk)
     print('Project Desk: http://127.0.0.1:'+str(server.server_port),flush=True)
     try:server.serve_forever()
     except KeyboardInterrupt:pass

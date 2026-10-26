@@ -54,3 +54,12 @@ Tailscale Funnel
 ---------------
 
 Mac miniの既存Tailscaleを使う代替接続を追加しました。スマホ側はTailscaleアプリやVPN操作が不要です。tailnetの管理者がFunnelを有効にした後、Mac miniで start_funnel.py --enable を実行します。認証付きの127.0.0.1:18767だけを接続し、既存の443番の別サービスを上書きしません。公開URLでもアプリの接続コードは必要です。
+
+File intake and previews
+------------------------
+
+The Mac mini runtime uses its existing ~/.claude/tools/google_auth.py OAuth helper for Drive storage. It requires google-api-python-client and google-auth-oauthlib in the runtime Python environment. Credentials are not part of this repository. Drive files are created privately; existing shared folders are not used automatically. Generated Drive IDs are persisted before upload for safe retries.
+
+macOS PDFKit/Vision OCR is compiled from native/file_reader.swift on first use when needed. Files are limited to 50 MB each; PDF reading is bounded to 40 pages and textual previews to 100,000 characters. AI context contains up to 16,000 characters per selected attachment, with originals copied to the dedicated request folder. Audio/video and unsupported binary formats are stored without claiming transcription or full content understanding.
+
+Artifact previews are limited to 20 MB. Office previews show extracted contents, not the original page layout. HTML previews cannot execute scripts or make external requests.
