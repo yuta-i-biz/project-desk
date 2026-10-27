@@ -79,6 +79,12 @@
   ],
   "review.py": [
     "unreviewed_files",
-    "batches"
+    "batches",
+    "isolated_test_evidence"
+  ],
+  "review_tests.py": [
+    "sandbox-exec",
+    "network-outbound",
+    "host-owned isolated test process"
   ]
 }

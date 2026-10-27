@@ -49,6 +49,9 @@ def _run_single(folder,prompt,job,engines,env,files):
  if job.get('registered_workspace'):
   instruction=instruction.replace('この検品ではコードや添付プログラムを実行しない。','添付資料のプログラムは実行しない。')
   instruction+='\n登録された案件コードの作業コピー workspace/ 内のテストは、読み取り専用で実行できるものに限り実行してよい。添付資料のプログラムは実行しない。依存導入・ファイル変更・外部送信はしない。PythonではPYTHONDONTWRITEBYTECODE=1を使う。テストは原則python3 -m unittestまたはpytest等の実行記録が残るコマンドで実行し、echoによる成功表示を検証に使わない。書込みや外部接続が必要な場合はunverified。'
+  evidence=job.get('isolated_test_evidence')
+  if evidence:
+   instruction+='\nホストが別の使い捨てコピーで実行した検証記録（コードは実行せず、対象ハッシュと結果を照合する。一時書込みが必要という理由だけで未確認にしない。失敗・不足は未確認のまま）:\n'+json.dumps(evidence,ensure_ascii=False)
   env={**env,'PYTHONDONTWRITEBYTECODE':'1'}
  try:
   binary='/opt/homebrew/bin/codex'
@@ -85,12 +88,21 @@ def _run_single(folder,prompt,job,engines,env,files):
   if job.get('registered_workspace') and review['status']=='reviewed':
    from verification_evidence import successful_tests
    tests=successful_tests(cache/'cli.log')
+   evidence=job.get('isolated_test_evidence',{})
+   if evidence and evidence.get('status')!='passed':return {**result,'summary':'隔離コピーのテストが未完了または失敗しています。','checks':checks,'independent':True,'error_stage':'runtime_tests'}
+   if evidence.get('status')=='passed' and evidence.get('test_count',0)>0:
+    matched=all(not n.startswith('workspace/') or evidence.get('manifest',{}).get(n[len('workspace/'):])==h for n,h in before.items())
+    if matched:tests.append({k:evidence[k] for k in ('runner','source','exit_code','test_count','network','writes')})
    if not tests:return {**result,'summary':'別プロセスによるテストの実行記録がなく、検証は未完了です。','checks':checks,'independent':True,'error_stage':'runtime_tests'}
   return {'tests':tests,'status':review['status'],'summary':review['summary'][:2000],'checks':checks,'independent':True,'engine':'Codex','input_images':[{'file':name,'sha256':before[name],'source':'cli_image_attachment'} for name in images],'scope':'別プロセスによる読み取り専用の検品。記録されたテスト以外の検証や、正しさ全体を保証するものではありません。'}
  except (OSError,ValueError,TypeError,RuntimeError,subprocess.TimeoutExpired):return result
 
 
 def run(folder,prompt,job,engines,env,files):
+ if job.get('review_required') and job.get('registered_workspace') and (folder/'workspace').is_dir():
+  from review_tests import run as run_tests
+  evidence=run_tests(folder/'workspace')
+  job={**job,'isolated_test_evidence':evidence}
  # Bound each independent review without silently omitting any target.
  if not job['review_required']:return _run_single(folder,prompt,job,engines,env,files)
  names=sorted({f['name'] for f in files if f['name']!='response.txt' and (not f['name'].startswith('attachments/') or job['kind']=='image_review')},key=lambda n:(not n.startswith('workspace/'),n))
@@ -105,7 +117,7 @@ def run(folder,prompt,job,engines,env,files):
   selected=names[start:start+59]
   batch=_run_single(folder,prompt+'\n分割検品：今回の対象を全件確認。別の分割対象まで確認済みとしない。',job,engines,env,[{'name':n} for n in selected]+references)
   batches.append(batch)
-  if batch.get('status') not in ('reviewed','issues'):break
+  # A missing check in one group must not suppress the remaining groups.
  if any(not (folder/n).is_file() or (folder/n).is_symlink() or digest(folder/n)!=value for n,value in before.items()):return {'status':'issues','summary':'分割検品の途中に成果物が変化したため結果を無効にしました。','checks':[],'independent':False}
  checks=[c for b in batches for c in b.get('checks',[])];covered={c['file'] for c in checks};missing=sorted(targets-covered)
  state='issues' if any(b.get('status')=='issues' for b in batches) else 'reviewed' if len(batches)==(len(names)+58)//59 and not missing and all(b.get('status')=='reviewed' for b in batches) else 'unverified'

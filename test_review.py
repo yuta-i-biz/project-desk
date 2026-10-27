@@ -70,3 +70,13 @@ class BatchReviewTests(unittest.TestCase):
    for f in files:(folder/f['name']).write_text('fixture')
    with patch('review._run_single',return_value={'status':'unverified','summary':'not checked','independent':False,'checks':[]}):r=run(folder,'verify',{'kind':'implementation','review_required':True},[],{},files)
    self.assertEqual(r['status'],'unverified');self.assertEqual(len(r['unreviewed_files']),61)
+
+class ContinueBatchTests(unittest.TestCase):
+ def test_unverified_first_group_does_not_skip_later_groups(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   folder=Path(tmp);files=[{'name':'f'+str(i)} for i in range(70)]
+   for f in files:(folder/f['name']).write_text('fixture')
+   def single(folder,prompt,job,engines,env,files):
+    return {'status':'unverified','summary':'missing test','checks':[{'file':f['name'],'kind':'content','observation':'read'} for f in files],'independent':True}
+   with patch('review._run_single',side_effect=single) as call:r=run(folder,'verify',{'kind':'implementation','review_required':True},[],{},files)
+   self.assertEqual(call.call_count,2);self.assertEqual(r['status'],'unverified');self.assertFalse(r['unreviewed_files'])

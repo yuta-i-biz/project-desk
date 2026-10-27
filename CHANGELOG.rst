@@ -1,3 +1,10 @@
+2026-10-27: Independent review recovery
+---------------------------------------
+* Execute registered unittest suites in a disposable macOS sandbox copy.
+* Permit loopback tests; deny external connections and writes outside the copy.
+* Keep static reviewer read-only; attach host-owned hash-bound test evidence.
+* Continue all review groups after an unverified group; never convert missing checks to success.
+
 自律改善の反復
 ----------------
 
