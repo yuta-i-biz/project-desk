@@ -15,7 +15,8 @@
     "renderActionCenter",
     "該当画面・成果物を開く",
     "beginChat",
-    "この工程・完了条件で開始する"
+    "この工程・完了条件で開始する",
+    "蓄積したスキル・部品・プログラム"
   ],
   "static/action_center.js": [
     "execution_status",
@@ -29,8 +30,9 @@
   ],
   "project_context.py": [
     "別端末の参照先は読み取りません",
-    "MAX_TOTAL",
-    "truncated"
+    "truncated",
+    "available_in_full",
+    "full_path"
   ],
   "workflows.py": [
     "dispatching",
@@ -86,5 +88,11 @@
     "sandbox-exec",
     "network-outbound",
     "host-owned isolated test process"
+  ],
+  "reusable_library.py": [
+    "reusable_assets",
+    "candidate",
+    "test_evidence",
+    "materialize"
   ]
 }

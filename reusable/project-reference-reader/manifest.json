@@ -1,0 +1,1 @@
+{"name":"project-reference-reader","kind":"skill","description":"案件資料を全文・検索・ページ指定で参照する。初期表示の外の記述も確認できる。","tags":["資料","台帳","全文","ルール"],"files":["SKILL.md","scripts/read_reference.py"]}

@@ -1,3 +1,10 @@
+2026-10-27: Full references and reusable assets
+---------------------------------------------
+* Keep full sanitized reference snapshots; preview size no longer removes documents or tails.
+* Supply full reference text to providers without file tools and a paged/searchable reader to file-capable providers.
+* Retain project-scoped skills, components and programs with immutable versions and host verification evidence.
+* Present reusable assets in system status; offer verified resources without extra AI classification calls.
+
 2026-10-27: Independent review recovery
 ---------------------------------------
 * Execute registered unittest suites in a disposable macOS sandbox copy.

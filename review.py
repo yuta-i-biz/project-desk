@@ -103,6 +103,12 @@ def run(folder,prompt,job,engines,env,files):
   from review_tests import run as run_tests
   evidence=run_tests(folder/'workspace')
   job={**job,'isolated_test_evidence':evidence}
+ result=_run_all(folder,prompt,job,engines,env,files)
+ if job.get('isolated_test_evidence'):
+  proof=job['isolated_test_evidence'];result['test_evidence']={k:proof[k] for k in ('status','manifest','test_count') if k in proof}
+ return result
+
+def _run_all(folder,prompt,job,engines,env,files):
  # Bound each independent review without silently omitting any target.
  if not job['review_required']:return _run_single(folder,prompt,job,engines,env,files)
  names=sorted({f['name'] for f in files if f['name']!='response.txt' and (not f['name'].startswith('attachments/') or job['kind']=='image_review')},key=lambda n:(not n.startswith('workspace/'),n))

@@ -47,7 +47,7 @@ class ProviderContextTests(unittest.TestCase):
   for engine in ('Codex','Claude Code','Gemini'):
    with self.subTest(engine=engine),tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp);home=root/'home';ledger=home/'.claude/runtime/ledger/Test';ledger.mkdir(parents=True)
-    (home/'.claude/CLAUDE.md').write_text('SHARED_POLICY_REFERENCE')
+    (home/'.claude/CLAUDE.md').write_text('SHARED_POLICY_REFERENCE'+'x'*18000+'FULL_POLICY_END')
     (ledger/'sample.md').write_text('## 目的\nSELECTED_PROJECT_REFERENCE\n## 次アクション\n比較する\n')
     d=Desk(home,root/'data');pid=d.snapshot()['projects'][0]['id'];(d.data/'engines.json').write_text(json.dumps([{'engine':engine,'available':True}]))
     inputs=[]
@@ -56,4 +56,5 @@ class ProviderContextTests(unittest.TestCase):
      inputs.append(kw['input']);(kw['cwd']/'response.txt').write_text('検証用の回答');return subprocess.CompletedProcess(command,0)
     with patch.object(execution.POOL,'submit',side_effect=lambda fn,**kw:fn()),patch.object(execution.subprocess,'run',side_effect=runner),patch('auth_status.claude_probe',return_value={'available':True}),patch('gemini_adapter.command',return_value=['mock-gemini']),patch('gemini_adapter.response',return_value='検証用の回答'):
      result=execution.submit(d,{'project_id':pid,'engine':engine,'prompt':'案件資料を要約してください'})
+    if engine=='Gemini':self.assertIn('FULL_POLICY_END',inputs[0])
     self.assertEqual(len(inputs),1);self.assertIn('SELECTED_PROJECT_REFERENCE',inputs[0]);self.assertIn('SHARED_POLICY_REFERENCE',inputs[0]);self.assertIn('truncated',inputs[0]);context=json.loads((d.data/'requests'/result['task_id']/'project_context.json').read_text());self.assertIn('project_ledger',[d['kind'] for d in context['reference_bundle']['documents']]);self.assertEqual(len(context['reference_bundle']['rules_fingerprint']),64)

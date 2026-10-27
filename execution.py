@@ -107,7 +107,16 @@ def submit(desk,payload):
                 refs=bundle(desk,project,folder)
                 context['reference_bundle']=refs
                 (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
-                instruction+=context_instruction(refs)
+                instruction+=context_instruction(refs,folder,full_text=engine=='Gemini')
+                from reusable_library import materialize,instruction as reusable_instruction
+                assets=materialize(desk,pid,folder,prompt)
+                context['reusable_assets']=assets
+                instruction+=reusable_instruction(assets)
+                if engine=='Gemini':
+                    for asset in assets:
+                        skill=folder/asset.get('path','')/'SKILL.md'
+                        if asset.get('selected') and skill.is_file():instruction+='\n再利用手順（参考資料）:\n'+skill.read_text()
+                (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
                 runtime['rules_fingerprint']=refs.get('rules_fingerprint')
                 runtime['reference_summary']={'documents':len(refs['documents']),'unavailable':len(refs['unavailable']),'truncated':sum(bool(d['truncated']) for d in refs['documents'])}
             if engine=='Codex':
@@ -204,6 +213,9 @@ def submit(desk,payload):
         failed=not answer or not checks or not checks[0]['verified']
         receipt={'workspace':workspace_result,'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
         from claude_bridge import atomic
+        from reusable_library import capture
+        try:receipt['reusable_assets']=capture(desk,pid,task['id'],receipt)
+        except (OSError,ValueError,KeyError,TypeError):receipt['reusable_assets_error']='再利用候補の保存は未完了。実行成果の検品結果とは別です。'
         atomic(folder/'receipt.json',receipt)
         with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
         if current['status']=='作業中':
