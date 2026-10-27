@@ -1,5 +1,5 @@
 """Copy an explicitly registered repository into a request; never mutate its Git tree."""
-import argparse,difflib,hashlib,json,os,re,shutil,sqlite3,subprocess
+import argparse,difflib,hashlib,json,os,re,shutil,sqlite3,subprocess,tempfile
 from pathlib import Path
 MAX_FILES=5000
 MAX_BYTES=100*1024*1024
@@ -119,7 +119,10 @@ def report(manifest,folder):
     patch.append(line);patch_size+=len(line.encode('utf-8'))
    if patch_size>MAX_BYTES:raise ValueError('変更差分が大きすぎます。')
   except UnicodeError:binary.append(name)
- if patch:(folder/'workspace_changes.patch').write_text(''.join(patch))
+ if patch:
+  fd,temp=tempfile.mkstemp(prefix='.workspace-patch-',dir=folder)
+  with os.fdopen(fd,'w') as f:f.write(''.join(patch))
+  os.replace(temp,folder/'workspace_changes.patch')
  return {'original_unchanged':True,'changed_files':changed,'binary_changes':binary,'summary':'複製対象の元ファイルは無変更。作業コピー内の変更 '+str(len(changed))+'件。','patch':'workspace_changes.patch' if patch else None}
 
 def main():
@@ -127,6 +130,15 @@ def main():
  parser.add_argument('--data',type=Path,required=True);parser.add_argument('--project-id',required=True);parser.add_argument('--source',type=Path,required=True)
  a=parser.parse_args();print(json.dumps(register(a.data,a.project_id,a.source,Path.home()),ensure_ascii=False))
 if __name__=='__main__':main()
+
+def record_manifest(desk,pid,folder,manifest):
+ # The model can edit files in its request, so authoritative provenance is stored outside it.
+ with desk.connect() as c:
+  task=c.execute('SELECT project_id FROM tasks WHERE id=?',(folder.name,)).fetchone()
+  if not task or task[0]!=pid or folder.resolve().parent!=(desk.data/'requests').resolve():raise ValueError('invalid request provenance')
+  c.execute('CREATE TABLE IF NOT EXISTS workspace_manifests(task_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,manifest TEXT NOT NULL)')
+  c.execute('INSERT INTO workspace_manifests VALUES(?,?,?)',(folder.name,pid,json.dumps(manifest)))
+
 
 def prepare_previous(desk,pid,folder,parent_id):
  """Carry a prior self-improvement copy forward, retaining original-source hashes."""
@@ -137,36 +149,36 @@ def prepare_previous(desk,pid,folder,parent_id):
  if not row or row[0]!=pid or not owned or owned[0]!='superseded':raise ValueError('prior request is outside this improvement project')
  parent=desk.data/'requests'/parent_id
  if parent.is_symlink() or not parent.is_dir() or parent.resolve().parent!=(desk.data/'requests').resolve():raise ValueError('invalid prior request folder')
- metadata=parent/'workspace_manifest.json';receipt_path=parent/'receipt.json'
- if metadata.is_symlink() or receipt_path.is_symlink() or metadata.stat().st_size>2*1024*1024 or receipt_path.stat().st_size>2*1024*1024:raise ValueError('invalid prior metadata')
- manifest=json.loads(metadata.read_text());receipt=json.loads(receipt_path.read_text())
+ receipt_path=parent/'receipt.json'
+ if receipt_path.is_symlink() or receipt_path.stat().st_size>2*1024*1024:raise ValueError('invalid prior metadata')
+ with desk.connect() as c:
+  stored=c.execute('SELECT manifest FROM workspace_manifests WHERE task_id=? AND project_id=?',(parent_id,pid)).fetchone()
+ if not stored:raise ValueError('trusted prior manifest missing')
+ manifest=json.loads(stored[0]);receipt=json.loads(receipt_path.read_text())
  if receipt.get('execution_status')!='succeeded' or (receipt.get('review') or {}).get('status') not in ('reviewed','issues') or (receipt.get('workspace') or {}).get('original_unchanged') is not True:raise ValueError('prior execution is not verified')
  source=validate(manifest['source'],desk.home)
  if report(manifest,parent).get('original_unchanged') is not True:raise ValueError('original source changed')
- previous=parent/'workspace';target=folder/'workspace'
- if target.exists() or target.is_symlink():raise ValueError('copy already exists')
- names=[];size=0
- for root,dirs,files in os.walk(previous,followlinks=False):
-  root=Path(root)
-  for name in dirs:
-   rel=str((root/name).relative_to(previous))
-   if not excluded(rel) and (root/name).is_symlink():raise ValueError('unsafe prior directory')
-  dirs[:]=[n for n in dirs if not excluded(str((root/n).relative_to(previous)))]
-  for name in files:
-   rel=str((root/name).relative_to(previous))
-   if excluded(rel):continue
-   if not safe_file(previous,rel):raise ValueError('unsafe prior file')
-   n=(previous/rel).stat().st_size;size+=n
-   if n>MAX_FILE or size>MAX_BYTES or len(names)>=MAX_FILES:raise ValueError('prior copy too large')
-   names.append(rel)
- target.mkdir(mode=0o700)
+ previous=parent/'workspace';prior=report(manifest,parent)
+ # Start from the latest registered baseline; only carry edits whose original
+ # content has not changed. A conflicting baseline is held, never overwritten.
+ baseline=prepare(desk,pid,folder)
+ if baseline is None:raise ValueError('registered baseline missing')
+ target=folder/'workspace'
  try:
-  for name in names:
-   before=(previous/name).read_bytes()
-   if not safe_file(previous,name) or len(before)>MAX_FILE:raise ValueError('prior file changed')
-   dest=target/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(before);shutil.copymode(previous/name,dest)
-   if not safe_file(previous,name) or hashlib.sha256((previous/name).read_bytes()).digest()!=hashlib.sha256(before).digest():raise ValueError('prior file changed during copy')
-  # Keep the original manifest so all cumulative edits/deletions are compared with the original.
-  (folder/'workspace_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False))
- except Exception:shutil.rmtree(target);raise
- return manifest
+  total=0
+  for name in prior.get('changed_files',[]):
+   if excluded(name) or Path(name).is_absolute() or '..' in Path(name).parts:raise ValueError('unsafe prior change')
+   if manifest['files'].get(name)!=baseline['files'].get(name):raise ValueError('new baseline conflicts with prior change')
+   src=previous/name;dest=target/name
+   if src.is_symlink():raise ValueError('unsafe prior file')
+   if src.is_file():
+    if not safe_file(previous,name):raise ValueError('unsafe prior file')
+    before=src.read_bytes();total+=len(before)
+    if len(before)>MAX_FILE or total>MAX_BYTES:raise ValueError('prior changes too large')
+    if not safe_file(previous,name):raise ValueError('prior file changed')
+    dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(before);shutil.copymode(src,dest)
+    if not safe_file(previous,name) or hashlib.sha256(src.read_bytes()).digest()!=hashlib.sha256(before).digest():raise ValueError('prior file changed during copy')
+   elif dest.is_file():dest.unlink()
+ except Exception:
+  shutil.rmtree(target);(folder/'workspace_manifest.json').unlink(missing_ok=True);raise
+ return baseline

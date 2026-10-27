@@ -17,7 +17,7 @@ def digest(path):
  return h.hexdigest()
 
 
-def run(folder,prompt,job,engines,env,files):
+def _run_single(folder,prompt,job,engines,env,files):
  result={'status':'not_required','summary':'この依頼では別プロセスのレビューを実行していません。','checks':[],'independent':False}
  if not job['review_required']:return result
  result.update(status='unverified',summary='成果物の別プロセスによる確認は未完了です。')
@@ -88,3 +88,25 @@ def run(folder,prompt,job,engines,env,files):
    if not tests:return {**result,'summary':'別プロセスによるテストの実行記録がなく、検証は未完了です。','checks':checks,'independent':True,'error_stage':'runtime_tests'}
   return {'tests':tests,'status':review['status'],'summary':review['summary'][:2000],'checks':checks,'independent':True,'engine':'Codex','input_images':[{'file':name,'sha256':before[name],'source':'cli_image_attachment'} for name in images],'scope':'別プロセスによる読み取り専用の検品。記録されたテスト以外の検証や、正しさ全体を保証するものではありません。'}
  except (OSError,ValueError,TypeError,RuntimeError,subprocess.TimeoutExpired):return result
+
+
+def run(folder,prompt,job,engines,env,files):
+ # Bound each independent review without silently omitting any target.
+ if not job['review_required']:return _run_single(folder,prompt,job,engines,env,files)
+ names=sorted({f['name'] for f in files if f['name']!='response.txt' and (not f['name'].startswith('attachments/') or job['kind']=='image_review')},key=lambda n:(not n.startswith('workspace/'),n))
+ if len(names)+int((folder/'response.txt').is_file())<=60:return _run_single(folder,prompt,job,engines,env,files)
+ if len(names)>236:return {'status':'unverified','summary':'検品対象が4分割の上限を超えています。検品対象の整理が必要です。','checks':[],'independent':False,'error_stage':'scope'}
+ references=[f for f in files if f['name'].startswith('attachments/') and f['name'] not in names]
+ before={n:digest(folder/n) for n in names+[f['name'] for f in references]}
+ targets=set(names)
+ if (folder/'response.txt').is_file():before['response.txt']=digest(folder/'response.txt');targets.add('response.txt')
+ batches=[]
+ for start in range(0,len(names),59):
+  selected=names[start:start+59]
+  batch=_run_single(folder,prompt+'\n分割検品：今回の対象を全件確認。別の分割対象まで確認済みとしない。',job,engines,env,[{'name':n} for n in selected]+references)
+  batches.append(batch)
+  if batch.get('status') not in ('reviewed','issues'):break
+ if any(not (folder/n).is_file() or (folder/n).is_symlink() or digest(folder/n)!=value for n,value in before.items()):return {'status':'issues','summary':'分割検品の途中に成果物が変化したため結果を無効にしました。','checks':[],'independent':False}
+ checks=[c for b in batches for c in b.get('checks',[])];covered={c['file'] for c in checks};missing=sorted(targets-covered)
+ state='issues' if any(b.get('status')=='issues' for b in batches) else 'reviewed' if len(batches)==(len(names)+58)//59 and not missing and all(b.get('status')=='reviewed' for b in batches) else 'unverified'
+ return {'status':state,'summary':'分割検品 '+str(len(batches))+'回：'+' / '.join(b.get('summary','未確認') for b in batches),'checks':checks,'independent':bool(batches) and all(b.get('independent') for b in batches),'engine':'Codex','tests':[t for b in batches for t in b.get('tests',[])],'batches':len(batches),'unreviewed_files':missing,'input_images':[i for b in batches for i in b.get('input_images',[])],'scope':'分割した全対象の確認が揃った場合だけ検品済み。記録されたテスト以外の正しさは保証しません。'}

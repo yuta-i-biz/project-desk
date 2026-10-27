@@ -52,3 +52,21 @@ class RegisteredReviewTests(unittest.TestCase):
     Path(command[command.index('--output-last-message')+1]).write_text(json.dumps({'status':'unverified','summary':'実行記録が不足','checks':[]}));return subprocess.CompletedProcess(command,0)
    with patch('review.subprocess.run',side_effect=fake):r=run(folder,'コード修正',{'kind':'implementation','review_required':True},[{'engine':'Codex','available':True}],{},[])
    self.assertEqual(r['summary'],'実行記録が不足');self.assertEqual(r['status'],'unverified')
+
+
+class BatchReviewTests(unittest.TestCase):
+ def test_more_than_sixty_files_are_all_covered(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   folder=Path(tmp);names=['f'+str(i)+'.txt' for i in range(70)]
+   for name in names+['response.txt']:(folder/name).write_text('fixture')
+   calls=[]
+   def single(folder,prompt,job,engines,env,files):
+    group=[f['name'] for f in files]+['response.txt'];calls.append(group);return {'status':'reviewed','summary':'確認済み','independent':True,'checks':[{'file':n,'kind':'content','observation':'checked'} for n in group]}
+   with patch('review._run_single',side_effect=single):r=run(folder,'verify',{'kind':'implementation','review_required':True},[],{},[{'name':n} for n in names])
+   self.assertEqual(r['status'],'reviewed');self.assertEqual(len(calls),2);self.assertTrue(all(len(c)<=60 for c in calls));self.assertFalse(r['unreviewed_files'])
+ def test_partial_batch_is_never_a_pass(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   folder=Path(tmp);files=[{'name':'f'+str(i)} for i in range(61)]
+   for f in files:(folder/f['name']).write_text('fixture')
+   with patch('review._run_single',return_value={'status':'unverified','summary':'not checked','independent':False,'checks':[]}):r=run(folder,'verify',{'kind':'implementation','review_required':True},[],{},files)
+   self.assertEqual(r['status'],'unverified');self.assertEqual(len(r['unreviewed_files']),61)

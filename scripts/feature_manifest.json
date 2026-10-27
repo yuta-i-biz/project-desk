@@ -76,5 +76,9 @@
   ],
   "workspace.py": [
     "prepare_previous"
+  ],
+  "review.py": [
+    "unreviewed_files",
+    "batches"
   ]
 }

@@ -92,10 +92,11 @@ def submit(desk,payload):
         answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home);workspace=None;workspace_result=None
         try:
             if not global_scope and job['kind'] in ('implementation','editing'):
-                from workspace import prepare,prepare_previous,public
+                from workspace import prepare,prepare_previous,record_manifest,public
                 parent=payload.get('_growth_parent') if payload.get('_self_growth') is SELF_GROWTH else None
                 workspace=prepare_previous(desk,pid,folder,parent) if parent else prepare(desk,pid,folder)
                 if workspace is not None:
+                    record_manifest(desk,pid,folder,workspace)
                     context['workspace']=public(workspace)
                     runtime['workspace']=context['workspace']
                     runtime['scope']='登録した案件コードの作業コピーで実装・検証。元のリポジトリは変更しません。'
@@ -202,7 +203,8 @@ def submit(desk,payload):
             if review_result['status']!='reviewed':reason=review_result['summary']
         failed=not answer or not checks or not checks[0]['verified']
         receipt={'workspace':workspace_result,'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
-        (folder/'receipt.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
+        from claude_bridge import atomic
+        atomic(folder/'receipt.json',receipt)
         with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
         if current['status']=='作業中':
             try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'保留' if failed else '確認待ち','blocker':reason[:3500],'result':(answer or reason)[:3500]})
