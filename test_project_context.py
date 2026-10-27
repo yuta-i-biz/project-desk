@@ -29,6 +29,12 @@ class ContextTests(unittest.TestCase):
   first=bundle(self.desk,{},self.folder);self.assertEqual([d['kind'] for d in first['documents']],['common_rules','registered_project_rules'])
   self.assertEqual(first['rules_fingerprint'],bundle(self.desk,{},self.folder)['rules_fingerprint'])
   common.write_text('updated common rules');self.assertNotEqual(first['rules_fingerprint'],bundle(self.desk,{},self.folder)['rules_fingerprint'])
+ def test_fixed_common_root_may_be_synced_but_leaf_links_still_rejected(self):
+  import shutil
+  old=self.home/'.claude';sync=self.home/'sync';shutil.move(str(old),str(sync));old.symlink_to(sync,target_is_directory=True)
+  (sync/'CLAUDE.md').write_text('synced common rules');r=bundle(self.desk,{},self.folder);self.assertIn('synced common rules',[d['text'] for d in r['documents']])
+  (sync/'CLAUDE.md').unlink();secret=self.home/'private.md';secret.write_text('must not transmit');(sync/'CLAUDE.md').symlink_to(secret)
+  self.assertNotIn('must not transmit',[d['text'] for d in bundle(self.desk,{},self.folder)['documents']])
  def test_secret_patterns_removed(self):
   text='api_key: fake-value\npassword = fake-password\n-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\nordinary text';safe=redact(text);self.assertNotIn('fake',safe);self.assertIn('ordinary text',safe)
 

@@ -33,8 +33,10 @@ def bundle(desk,project,folder):
   p=Path(str(source.get('path') or ''))
   if local_file(p,ledger) and p.suffix=='.md':candidates.append(('project_ledger',p,ledger))
   else:result['unavailable'].append({'kind':'ledger','reason':'案件台帳をこの端末で確認できません'})
- common=desk.home/'.claude/CLAUDE.md'
- if local_file(common,desk.home/'.claude'):candidates.append(('common_rules',common,desk.home/'.claude'))
+ # The user's fixed common directory may be a sync symlink. Resolve this
+ # one trusted root; project paths and symlinked files remain disallowed.
+ common_root=(desk.home/'.claude').resolve();common=common_root/'CLAUDE.md'
+ if common_root.is_relative_to(desk.home.resolve()) and local_file(common,common_root):candidates.append(('common_rules',common,common_root))
  else:result['unavailable'].append({'kind':'common_rules','reason':'共通ルールを確認できません'})
  criteria=desk.home/'.claude/runtime/auto_run_criteria.md'
  if local_file(criteria,desk.home/'.claude/runtime'):candidates.append(('execution_policy',criteria,desk.home/'.claude/runtime'))
