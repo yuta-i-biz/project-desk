@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local project desk. Existing Claude files are read-only; writes stay in data/."""
 import argparse
+from contextlib import contextmanager
 import datetime as dt
 import hashlib
 from http.cookies import SimpleCookie
@@ -87,9 +88,15 @@ class Desk:
             existing={row[1] for row in c.execute('PRAGMA table_info(tasks)')}
             for name,definition in [('due_date',"TEXT NOT NULL DEFAULT ''"),('start_date',"TEXT NOT NULL DEFAULT ''"),('effort_days',"TEXT NOT NULL DEFAULT ''"),('depends_on',"TEXT NOT NULL DEFAULT ''"),('deadline_reason',"TEXT NOT NULL DEFAULT ''"),('completion_criteria',"TEXT NOT NULL DEFAULT ''")]:
                 if name not in existing:c.execute('ALTER TABLE tasks ADD COLUMN '+name+' '+definition)
+    @contextmanager
     def connect(self):
         c = sqlite3.connect(self.db, timeout=15); c.row_factory = sqlite3.Row
-        c.execute('PRAGMA foreign_keys=ON'); return c
+        try:
+            c.execute('PRAGMA foreign_keys=ON')
+            with c:
+                yield c
+        finally:
+            c.close()
     def invalidate(self):
         self.cache = None
         self.cache_at = 0
@@ -288,6 +295,8 @@ class Desk:
             t['needs_check']=(t['status']=='作業中' and (at-dt.datetime.fromisoformat(t['updated'])).total_seconds()>900)
             t['is_ai_request']=(self.data/'requests'/t['id']/'project_context.json').exists()
             t['receipt']=read_json(self.data/'requests'/t['id']/'receipt.json',None)
+        from execution_progress import decorate
+        tasks=decorate(self,tasks)
         local_health=read_json(self.data/'session_health.json',{})
         peer=read_json(self.data/'peer_snapshot.json',None)
         if peer is None:peer=read_json(self.data/'mac_mini.json',{})
@@ -305,11 +314,12 @@ class Desk:
         from chat_schedule import overlay
         from workflows import plans
         from autonomy import report as autonomy_report
-        from reusable_library import catalog as reusable_catalog
+        from usage_meter import snapshot as usage_snapshot
+        from reusable_library import catalog as reusable_catalog,builtin_catalog
         from business_metrics import snapshot as metrics_snapshot
         from self_growth import status as growth_status
         from initiatives import report as initiative_report
-        return {**base,'reusable_assets':reusable_catalog(self),'runtime_ops':read_json(self.data/'runtime_ops.json',{}),'business_metrics':metrics_snapshot(self.data,[p for p in base['projects'] if p['company']=='モノ・ループ']),'initiatives':initiative_report(base['projects'],tasks+base.get('sheet_tasks',[])),'self_growth':{**growth_status(self),'enabled':read_json(self.data/'self_growth.json',{}).get('enabled') is True},'insights_error':read_json(self.data/'insights_error.json',{}),'autonomy':autonomy_report(Path.home()/'.claude/runtime',base['projects'],tasks+base.get('sheet_tasks',[])+base.get('imported_tasks',[])),'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
+        return {**base,'token_usage':usage_snapshot(self),'reusable_builtins':builtin_catalog(),'reusable_assets':reusable_catalog(self),'runtime_ops':read_json(self.data/'runtime_ops.json',{}),'business_metrics':metrics_snapshot(self.data,[p for p in base['projects'] if p['company']=='モノ・ループ']),'initiatives':initiative_report(base['projects'],tasks+base.get('sheet_tasks',[])),'self_growth':{**growth_status(self),'enabled':read_json(self.data/'self_growth.json',{}).get('enabled') is True},'insights_error':read_json(self.data/'insights_error.json',{}),'autonomy':autonomy_report(Path.home()/'.claude/runtime',base['projects'],tasks+base.get('sheet_tasks',[])+base.get('imported_tasks',[])),'workflows':plans(self),'attachments':public_records(self),'tasks':overlay(self,tasks+base.get('sheet_tasks',[])),'events':events,'checked_at':now(),'app_path':str(ROOT/'app.py'),'health':health,
                 'connections':read_json(self.data/'connections.json',[]),
                 'engines':read_json(self.data/'engines.json',[]),
                 'deadline_review':read_json(self.data/'deadline_review.json',{}),

@@ -21,7 +21,7 @@ class ExecutionQualityTests(unittest.TestCase):
    with patch.object(execution.POOL,'submit',side_effect=lambda fn,**kw:fn()),patch.object(execution.subprocess,'run',side_effect=runner),patch('review.run',return_value={'status':'unverified','summary':'目視検証が未確認','checks':[],'independent':False}) as review:
     r=execution.submit(d,{'project_id':pid,'prompt':'画像を作成して'})
    t=next(t for t in d.snapshot()['tasks'] if t['id']==r['task_id']);receipt=json.loads((d.data/'requests'/t['id']/'receipt.json').read_text())
-   self.assertEqual(t['status'],'保留' if returncode else '確認待ち');self.assertFalse(receipt['independent_verification']);self.assertEqual(len(receipt['summary']),8000)
+   self.assertEqual(t['status'],'保留');self.assertFalse(receipt['independent_verification']);self.assertEqual(len(receipt['summary']),8000)
    self.assertEqual(receipt['execution_status'],'failed' if returncode else 'succeeded')
    if returncode:review.assert_not_called()
    else:review.assert_called_once();self.assertEqual(t['blocker'],'目視検証が未確認')

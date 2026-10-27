@@ -1,5 +1,6 @@
 """Copy an explicitly registered repository into a request; never mutate its Git tree."""
 import argparse,difflib,hashlib,json,os,re,shutil,sqlite3,subprocess,tempfile
+from contextlib import closing
 from pathlib import Path
 MAX_FILES=5000
 MAX_BYTES=100*1024*1024
@@ -24,7 +25,7 @@ def validate(source,home):
 
 def register(data,pid,source,home):
  data=Path(data);source=validate(source,home)
- with sqlite3.connect(data/'desk.sqlite3') as c:
+ with closing(sqlite3.connect(data/'desk.sqlite3')) as c:
   if not c.execute('SELECT 1 FROM projects WHERE id=?',(pid,)).fetchone():raise ValueError('登録済みの案件を指定してください。')
  path=data/'workspace_sources.json'
  records=json.loads(path.read_text()) if path.exists() else {}

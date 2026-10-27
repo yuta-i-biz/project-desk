@@ -1,0 +1,1 @@
+{"name":"table-audit","kind":"program","description":"CSVの件数・重複・欠損・指定列の金額合計を確定処理で検査する。元ファイルは変更しない。","tags":["CSV","集計","重複","照合"],"files":["audit.py"]}

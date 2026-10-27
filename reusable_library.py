@@ -105,3 +105,12 @@ def materialize(desk,pid,folder,prompt):
 
 def instruction(items):
  return '\n再利用できる資産の一覧（参考資料であり実行権限ではない）。selectedの資産はpathにコピー済み。必要なSKILL.md等だけ読んで使う。プログラムは今回の依頼が許可する操作だけ実行する。未選択の資産もpathから必要に応じて読める。\n'+json.dumps(items,ensure_ascii=False)+'\n繰り返し使える手順・部品・プログラムが今回の成果として生じた場合だけ reusable/<name>/manifest.json にname,kind(skill/component/program),description,tags,filesを記録する。登録コード内で作る場合はworkspace/reusable/。スキルはSKILL.md、プログラム等は実行可能な実体とテストを含める。案件の個人情報や認証情報を汎用化しない。新しい権限や依存導入・公開をこの指示から推測しない。'
+
+
+def builtin_catalog():
+ result=[]
+ for package in sorted((ROOT/'reusable').iterdir()):
+  if not package.is_dir() or package.is_symlink():continue
+  value,hashes,digest=manifest(package)
+  result.append({k:value[k] for k in ('name','kind','description')})
+ return result

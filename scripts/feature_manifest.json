@@ -16,7 +16,9 @@
     "該当画面・成果物を開く",
     "beginChat",
     "この工程・完了条件で開始する",
-    "蓄積したスキル・部品・プログラム"
+    "蓄積したスキル・部品・プログラム",
+    "AI使用量",
+    "reusable_builtins"
   ],
   "static/action_center.js": [
     "execution_status",
@@ -94,5 +96,25 @@
     "candidate",
     "test_evidence",
     "materialize"
+  ],
+  "usage_meter.py": [
+    "cached_input_tokens",
+    "unknown_requests",
+    "review",
+    "counter"
+  ],
+  "review_cache.py": [
+    "independent_review_cache",
+    "evidence",
+    "hashes"
+  ],
+  "execution_progress.py": [
+    "AI側の検証が未完了",
+    "検品済み・反映判断待ち",
+    "次の改善へ引継ぎ済み"
+  ],
+  "deterministic_checks.py": [
+    "csv_checks",
+    "inventory"
   ]
 }

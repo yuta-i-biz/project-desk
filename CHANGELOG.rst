@@ -1,3 +1,12 @@
+2026-10-27: Usage visibility and repeat-work reduction
+----------------------------------------------------
+* Observe provider token counters by project and execution/review stage; distinguish cached input and unknown coverage.
+* Reuse host-stored independent findings only with unchanged source, reference rules and review contract; always rerun isolated tests.
+* Provide fixed read-only CSV auditing and duplicate-file inventory, including attachment preflight.
+* Derive visible execution progress from receipts; keep AI failures separate from human release decisions.
+* Keep full task details in the request file and send an initial index to file-capable providers.
+* Include the independently reviewed deterministic database connection closure fix.
+
 2026-10-27: Full references and reusable assets
 ---------------------------------------------
 * Keep full sanitized reference snapshots; preview size no longer removes documents or tails.

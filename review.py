@@ -103,7 +103,8 @@ def run(folder,prompt,job,engines,env,files):
   from review_tests import run as run_tests
   evidence=run_tests(folder/'workspace')
   job={**job,'isolated_test_evidence':evidence}
- result=_run_all(folder,prompt,job,engines,env,files)
+ from review_cache import run as cached_review
+ result=cached_review(folder,prompt,job,engines,env,files,_run_all)
  if job.get('isolated_test_evidence'):
   proof=job['isolated_test_evidence'];result['test_evidence']={k:proof[k] for k in ('status','manifest','test_count') if k in proof}
  return result

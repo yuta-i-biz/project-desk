@@ -1,4 +1,5 @@
 import hashlib,json,subprocess,sys,tempfile,unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -8,7 +9,7 @@ class WorkspaceTests(unittest.TestCase):
   self.temp=tempfile.TemporaryDirectory();self.home=Path(self.temp.name);self.source=self.home/'project';self.source.mkdir();self.data=self.home/'data';self.data.mkdir();self.folder=self.data/'requests/test';self.folder.mkdir(parents=True)
   subprocess.run(['git','init','-q',str(self.source)],check=True,capture_output=True)
   import sqlite3
-  with sqlite3.connect(self.data/'desk.sqlite3') as c:c.execute('CREATE TABLE projects(id TEXT PRIMARY KEY)');c.execute('INSERT INTO projects VALUES(?)',('p',))
+  with closing(sqlite3.connect(self.data/'desk.sqlite3')) as c, c:c.execute('CREATE TABLE projects(id TEXT PRIMARY KEY)');c.execute('INSERT INTO projects VALUES(?)',('p',))
   self.desk=SimpleNamespace(home=self.home,data=self.data)
  def tearDown(self):self.temp.cleanup()
  def add(self,name,content):

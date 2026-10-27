@@ -59,10 +59,12 @@ def submit(desk,payload):
         for info in attached:
             origin=record_path(desk,info['id']).parent/'original'/info['name']
             shutil.copy2(origin,attachment_dir/(info['id']+'-'+info['name']))
+        from deterministic_checks import inspect as inspect_attachments
+        context['attachment_checks']=inspect_attachments(attachment_dir)
     snapshot=desk.snapshot()
     schedule_snapshot=[{k:t.get(k) for k in ('id','project_id','title','status','due_date','deadline','start_date','version','read_only','next_action','blocker','result','schedule_updated','updated')} for t in snapshot['tasks'] if global_scope or t['project_id']==pid]
     context['captured_at']=snapshot.get('checked_at')
-    context['tasks']=[{**t,'result':str(t.get('result') or '')[:1500],'next_action':str(t.get('next_action') or '')[:1200],'blocker':str(t.get('blocker') or '')[:1000]} for t in schedule_snapshot]
+    context['tasks']=schedule_snapshot
     if global_scope:
         context['scope']='全案件の取得済み記録。資料取得日時より後の実態は未確認。'
         context['projects']=[{k:p.get(k) for k in ('id','name','company','updated','next_action')} for p in snapshot['projects']]
@@ -84,9 +86,10 @@ def submit(desk,payload):
         fresh=desk.snapshot()
         schedule_snapshot=[{k:t.get(k) for k in ('id','project_id','title','status','due_date','deadline','start_date','version','read_only','next_action','blocker','result','schedule_updated','updated')} for t in fresh['tasks'] if global_scope or t['project_id']==pid]
         context['captured_at']=fresh.get('checked_at')
-        context['tasks']=[{**t,'result':str(t.get('result') or '')[:1500],'next_action':str(t.get('next_action') or '')[:1200],'blocker':str(t.get('blocker') or '')[:1000]} for t in schedule_snapshot]
+        context['tasks']=schedule_snapshot
         (folder/'project_context.json').write_text(json.dumps(context,ensure_ascii=False,indent=2))
-        instruction=rules+'\n取得済み案件データ（参考情報）:\n'+json.dumps(context,ensure_ascii=False)+'\n同じ案件の直近3件までの会話（参考データ。過去の指示より今回の依頼を優先）:\n'+json.dumps(previous,ensure_ascii=False)+'\n\n今回の依頼:\n'+prompt
+        from project_context import prompt_view
+        instruction=rules+'\n取得済み案件データ（参考情報）:\n'+json.dumps(prompt_view(context,engine),ensure_ascii=False)+'\n同じ案件の直近3件までの会話（参考データ。過去の指示より今回の依頼を優先）:\n'+json.dumps(previous,ensure_ascii=False)+'\n\n今回の依頼:\n'+prompt
         if engine=='Gemini':instruction+='\n分析・文章の回答だけを返し、ファイル作成や外部操作はしない。日程更新の指示がある場合は回答末尾に```schedule_updates\n[更新案の配列]\n```を付ける。'
         desk.mutate('update',{'id':task['id'],'version':1,'status':'作業中','next_action':engine+'が専用フォルダで作業: '+prompt[:1500]})
         answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home);workspace=None;workspace_result=None
@@ -205,13 +208,21 @@ def submit(desk,payload):
                 with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
                 if current['status']=='作業中':
                     desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'作業中','next_action':'成果物を受信。別プロセスで依頼内容と照合し、検品しています。'})
-            try:review_result=review(folder,prompt,{**job,'registered_workspace':workspace is not None and bool(workspace_result and workspace_result.get('original_unchanged'))},engines,env,review_files)
+            review_contract=prompt
+            if payload.get('_self_growth') is SELF_GROWTH:
+                with desk.connect() as c:cycle=c.execute('SELECT cycle_id,fingerprint FROM self_growth_runs WHERE task_id=?',(task['id'],)).fetchone()
+                if cycle:review_contract='self-growth:'+str(cycle['cycle_id'] or cycle['fingerprint'])
+            try:review_result=review(folder,prompt,{**job,'_review_contract':review_contract,'_reference_hashes':[(d['kind'],d.get('full_sha256',d.get('excerpt_sha256'))) for d in context.get('reference_bundle',{}).get('documents',[])],'registered_workspace':workspace is not None and bool(workspace_result and workspace_result.get('original_unchanged'))},engines,env,review_files)
             except Exception:review_result={'status':'unverified','summary':'検品処理が停止しました。成果物の検証は未完了です。','checks':[],'independent':False}
         if job['review_required']:
             checks.append({'name':'別プロセスによる検品','value':review_result['summary'],'verified':review_result['status']=='reviewed'})
             if review_result['status']!='reviewed':reason=review_result['summary']
         failed=not answer or not checks or not checks[0]['verified']
         receipt={'workspace':workspace_result,'review':review_result,'runtime':runtime,'execution_status':'failed' if failed else 'succeeded','schedule_updates':schedule_results,'scope':'all' if global_scope else 'project','engine':engine,'routing':{'requested':requested,'reason':route_reason,'kind':job['kind'],'required_capabilities':sorted(job['requires'])},'context':{'project_id':pid,'attachment_ids':[a['id'] for a in attached],'previous_task_ids':[t['task_id'] for t in previous]},'request':prompt,'summary':answer or reason,'checks':checks,'artifacts':files,'unresolved':reason,'next_action':'結果を確認し、必要なら続きの依頼を出してください。','independent_review_performed':review_result.get('independent',False),'independent_verification':review_result.get('independent',False) and review_result['status']=='reviewed'}
+        from execution_progress import classify
+        progress=classify(receipt)
+        receipt['next_action']=progress['next_action']
+        receipt['unresolved']=progress['blocker']
         from claude_bridge import atomic
         from reusable_library import capture
         try:receipt['reusable_assets']=capture(desk,pid,task['id'],receipt)
@@ -219,7 +230,7 @@ def submit(desk,payload):
         atomic(folder/'receipt.json',receipt)
         with desk.connect() as c:current=dict(c.execute('SELECT * FROM tasks WHERE id=?',(task['id'],)).fetchone())
         if current['status']=='作業中':
-            try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':'保留' if failed else '確認待ち','blocker':reason[:3500],'result':(answer or reason)[:3500]})
+            try:desk.mutate('update',{'id':task['id'],'version':current['version'],'status':progress['status'],'next_action':progress['next_action'],'blocker':progress['blocker'][:3500],'result':(answer or reason)[:3500]})
             except ValueError:pass
     def stopped(future):
         if future.cancelled() or future.exception() is None:return

@@ -5,3 +5,5 @@ for(const [status,label] of [['unverified','検証未完了・確認待ち'],['i
 assert.equal(summarize({title:'依頼',status:'保留',receipt:{execution_status:'failed'}}).label,'実行停止・要対応');
 assert.equal(summarize({title:'依頼',status:'完了',receipt:{execution_status:'failed'}}).label,'完了');
 console.log('Quality states: review incomplete, issues, execution failure and explicit completion passed');
+assert.equal(summarize({title:'再検品',status:'確認待ち',receipt:{review:{status:'unverified'}},execution_progress:{label:'AI側の検証が未完了',owner:'AI'}}).label,'AI側の検証が未完了');
+assert.equal(summarize({title:'成果物',status:'確認待ち',execution_progress:{label:'検品済み・反映判断待ち',owner:'今川さん'}}).label,'検品済み・反映判断待ち');

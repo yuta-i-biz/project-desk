@@ -292,9 +292,15 @@ function renderSystemInsights(){
  const states={dispatching:'受付を確認中',running:'調査・修正・検品中',ready:'検品済み・反映判断待ち',held:'停止・確認が必要',resolved:'確認済み',superseded:'次の改善へ引継ぎ済み'};
  for(const run of g.runs||[]){const card=E('article',{class:'task-card'},E('h3',{},'第'+(run.iteration||1)+'回：'+(states[run.state]||run.state)),E('p',{},run.reason),E('small',{},date(run.created,true)));if(run.task_id)card.append(E('a',{href:'?view=results&task='+encodeURIComponent(run.task_id)},'差分・検証結果を見る ↗'));if(['ready','held'].includes(run.state))card.append(E('button',{class:'secondary',onclick:async()=>{try{await api('/api/self-growth/resolve',{fingerprint:run.fingerprint});await load();}catch(e){toast(e.message);}}},'確認済みにする（本番反映はしない）'));growth.append(card);}
  wrap.append(growth);
+ const usage=state.data.token_usage||{},usageBox=E('section',{class:'overview-project'},E('h2',{},'AI使用量'),E('p',{},usage.scope||'使用量の記録は未取得です。'),E('p',{},'記録あり '+(usage.observed_requests||0)+'依頼 / 使用量未取得 '+(usage.unknown_requests||0)+'依頼'));
+ const tokenNumber=v=>v==null?'未取得':Number(v).toLocaleString('ja-JP');
+ for(const row of usage.rows||[]){if(state.company&&projectById(row.project_id)?.company!==state.company)continue;usageBox.append(E('article',{class:'task-card'},E('h3',{},(projectById(row.project_id)?.name||row.project_id)+' · '+row.engine+' · '+(row.stage==='review'?'検品':'作業')),E('p',{},'入力 '+tokenNumber(row.input_tokens)+' / うちキャッシュ読取 '+tokenNumber(row.cached_input_tokens)+' / 出力 '+tokenNumber(row.output_tokens)),E('small',{},row.calls+'回の記録'+(row.unknown_input_calls||row.unknown_cache_calls||row.unknown_output_calls?'（一部未取得を含む。表示は判明分）':''))));}
+ const reuseCount=(state.data.tasks||[]).reduce((n,t)=>n+(t.receipt?.review?.reused_checks||0),0);usageBox.append(E('p',{},'前回の検品結果を引き継いだファイル：'+reuseCount+'件（トークン削減率ではありません）'));wrap.append(usageBox);
+
  const reuse=E('section',{class:'overview-project'},E('h2',{},'蓄積したスキル・部品・プログラム'),E('p',{},'同じ案件で再利用。確認済みの資産を依頼へ案内し、必要な部分だけ読み込みます。案内回数は実行回数ではありません。'));
  for(const asset of state.data.reusable_assets||[]){reuse.append(E('article',{class:'task-card'},E('h3',{},asset.name),E('strong',{},({skill:'スキル',component:'部品',program:'専用プログラム'}[asset.kind]||asset.kind)+' · '+(asset.state==='ready'?'再利用可能':'検証前の候補')),E('p',{},asset.description),E('small',{},'案内 '+asset.offered+'回'),E('a',{href:'?view=results&task='+encodeURIComponent(asset.source_task)},'作成元と検証結果 ↗')));}
- if(!(state.data.reusable_assets||[]).length)reuse.append(E('p',{},'案件別の蓄積はまだありません。共通の資料検索スキルを依頼時に利用できます。'));
+ for(const item of state.data.reusable_builtins||[]){reuse.append(E('article',{class:'task-card'},E('h3',{},item.name+' · 共通'),E('p',{},item.description)));}
+ if(!(state.data.reusable_assets||[]).length)reuse.append(E('p',{},'案件別の蓄積はまだありません。共通プログラムは依頼時に利用でき、添付の件数・重複・CSV形式はAIに渡す前に確認します。'));
  wrap.append(reuse);
  const processes=autonomyDetails('runtime_ops','定期処理・接続の稼働状況 · '+(ops.rows||[]).length+'件');processes.className='overview-project';processes.append(E('p',{},ops.scope||'監視記録は未取得です。'),E('small',{},'取得 '+date(ops.captured_at,true)));
  const age=Date.now()-new Date(ops.captured_at).getTime();if(!Number.isFinite(age)||age>180000||age<0)processes.append(E('p',{},'監視記録が古いか未取得です。現在稼働しているとは断定できません。'));

@@ -1,0 +1,1 @@
+{"name":"file-inventory","kind":"program","description":"指定フォルダのファイル数・容量・同一内容の重複を調べる。削除・移動・名前変更はしない。","tags":["ファイル","重複","棚卸し","整理"],"files":["inventory.py"]}
