@@ -66,10 +66,15 @@
   "self_growth.py": [
     "SELF_GROWTH",
     "original_unchanged",
-    "dispatching"
+    "dispatching",
+    "iteration",
+    "superseded"
   ],
   "initiatives.py": [
     "candidate_measures",
     "施策効果は未検証"
+  ],
+  "workspace.py": [
+    "prepare_previous"
   ]
 }

@@ -62,8 +62,25 @@ class GrowthTests(unittest.TestCase):
   self.assertEqual(self_growth.status(self.desk)['runs'][0]['state'],'ready');self.assertEqual((self.source/'app.py').read_text(),'test fixture')
  def test_uncertain_dispatch_never_replayed(self):
   self_growth.init(self.desk)
-  with self.desk.connect() as c:c.execute("INSERT INTO self_growth_runs VALUES('f',NULL,'dispatching','uncertain','2026-10-27')")
+  with self.desk.connect() as c:c.execute("INSERT INTO self_growth_runs(fingerprint,task_id,state,reason,created) VALUES('f',NULL,'dispatching','uncertain','2026-10-27')")
   (self.desk.data/'self_growth.json').write_text(json.dumps({'enabled':True,'project_id':self.pid}));self_growth.tick(self.desk,{},self.submit);self.assertEqual(self.calls,[]);self.assertEqual(self_growth.status(self.desk)['runs'][0]['state'],'held')
+class IterativeGrowthTests(unittest.TestCase):
+ setUp=GrowthTests.setUp
+ tearDown=GrowthTests.tearDown
+ def submit_next(self,desk,payload):
+  self.calls.append(payload);ident='task-'+format(len(self.calls),'016x');(desk.data/'requests'/ident).mkdir(parents=True);return {'task_id':ident}
+ def test_chain_carries_parent_and_stops_after_three(self):
+  (self.desk.data/'self_growth.json').write_text(json.dumps({'enabled':True,'project_id':self.pid}));self_growth.tick(self.desk,{},self.submit_next)
+  for iteration in range(1,4):
+   ident='task-'+format(iteration,'016x');(self.desk.data/'requests'/ident/'receipt.json').write_text(json.dumps({'execution_status':'succeeded','review':{'status':'reviewed'},'workspace':{'original_unchanged':True,'changed_files':['app.py']}}));self_growth.tick(self.desk,{},self.submit_next)
+  self.assertEqual(len(self.calls),3);self.assertEqual(self.calls[1]['_growth_parent'],'task-0000000000000001');self.assertEqual(self.calls[2]['_growth_parent'],'task-0000000000000002')
+  runs=self_growth.status(self.desk)['runs'];self.assertEqual(sum(r['state']=='ready' for r in runs),1);self.assertEqual(sum(r['state']=='superseded' for r in runs),2);self_growth.tick(self.desk,{},self.submit_next);self.assertEqual(len(self.calls),3)
+ def test_prior_copy_preserves_edits_additions_deletions(self):
+  from workspace import prepare,prepare_previous,report
+  self_growth.init(self.desk);t=self.desk.mutate('create',{'project_id':self.pid,'title':'first','next_action':'test'});parent=self.desk.data/'requests'/t['id'];parent.mkdir(parents=True);manifest=prepare(self.desk,self.pid,parent)
+  with self.desk.connect() as c:c.execute("INSERT INTO self_growth_runs(fingerprint,task_id,state,reason,created) VALUES('owned',?,'superseded','next','2026-10-27')",(t['id'],))
+  (parent/'workspace/app.py').write_text('improved');(parent/'workspace/execution.py').unlink();(parent/'workspace/new.txt').write_text('new');(parent/'receipt.json').write_text(json.dumps({'execution_status':'succeeded','review':{'status':'issues'},'workspace':{'original_unchanged':True}}))
+  child=self.desk.data/'requests/child';child.mkdir();copied=prepare_previous(self.desk,self.pid,child,t['id']);self.assertEqual((child/'workspace/app.py').read_text(),'improved');self.assertFalse((child/'workspace/execution.py').exists());self.assertEqual((child/'workspace/new.txt').read_text(),'new');self.assertEqual((self.source/'app.py').read_text(),'test fixture');self.assertEqual(set(report(copied,child)['changed_files']),{'app.py','execution.py','new.txt'})
 class InitiativeTests(unittest.TestCase):
  def test_only_ml_and_no_effect_claim(self):
   from initiatives import report

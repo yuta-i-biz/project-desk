@@ -92,8 +92,9 @@ def submit(desk,payload):
         answer='';checks=[];reason='作業結果を受信しました。成果物と検証結果を確認してください。';env=environment(desk.home);workspace=None;workspace_result=None
         try:
             if not global_scope and job['kind'] in ('implementation','editing'):
-                from workspace import prepare,public
-                workspace=prepare(desk,pid,folder)
+                from workspace import prepare,prepare_previous,public
+                parent=payload.get('_growth_parent') if payload.get('_self_growth') is SELF_GROWTH else None
+                workspace=prepare_previous(desk,pid,folder,parent) if parent else prepare(desk,pid,folder)
                 if workspace is not None:
                     context['workspace']=public(workspace)
                     runtime['workspace']=context['workspace']

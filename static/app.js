@@ -289,8 +289,8 @@ function renderAutonomy(wrap){
 function renderSystemInsights(){
  const wrap=E('div',{class:'overview-wrap'}),g=state.data.self_growth||{},ops=state.data.runtime_ops||{};
  const growth=E('section',{class:'overview-project'},E('h2',{},'システム自身の改善'),E('p',{},g.enabled?'作業コピーでの自律改善が有効です。':'自律改善の実行設定は無効です。'),E('p',{},g.scope||'登録コードの作業コピーで検証します。'));
- const states={dispatching:'受付を確認中',running:'調査・修正・検品中',ready:'検品済み・反映判断待ち',held:'停止・確認が必要',resolved:'確認済み'};
- for(const run of g.runs||[]){const card=E('article',{class:'task-card'},E('h3',{},states[run.state]||run.state),E('p',{},run.reason),E('small',{},date(run.created,true)));if(run.task_id)card.append(E('a',{href:'?view=results&task='+encodeURIComponent(run.task_id)},'差分・検証結果を見る ↗'));if(['ready','held'].includes(run.state))card.append(E('button',{class:'secondary',onclick:async()=>{try{await api('/api/self-growth/resolve',{fingerprint:run.fingerprint});await load();}catch(e){toast(e.message);}}},'確認済みにする（本番反映はしない）'));growth.append(card);}
+ const states={dispatching:'受付を確認中',running:'調査・修正・検品中',ready:'検品済み・反映判断待ち',held:'停止・確認が必要',resolved:'確認済み',superseded:'次の改善へ引継ぎ済み'};
+ for(const run of g.runs||[]){const card=E('article',{class:'task-card'},E('h3',{},'第'+(run.iteration||1)+'回：'+(states[run.state]||run.state)),E('p',{},run.reason),E('small',{},date(run.created,true)));if(run.task_id)card.append(E('a',{href:'?view=results&task='+encodeURIComponent(run.task_id)},'差分・検証結果を見る ↗'));if(['ready','held'].includes(run.state))card.append(E('button',{class:'secondary',onclick:async()=>{try{await api('/api/self-growth/resolve',{fingerprint:run.fingerprint});await load();}catch(e){toast(e.message);}}},'確認済みにする（本番反映はしない）'));growth.append(card);}
  wrap.append(growth);
  const processes=autonomyDetails('runtime_ops','定期処理・接続の稼働状況 · '+(ops.rows||[]).length+'件');processes.className='overview-project';processes.append(E('p',{},ops.scope||'監視記録は未取得です。'),E('small',{},'取得 '+date(ops.captured_at,true)));
  const age=Date.now()-new Date(ops.captured_at).getTime();if(!Number.isFinite(age)||age>180000||age<0)processes.append(E('p',{},'監視記録が古いか未取得です。現在稼働しているとは断定できません。'));
