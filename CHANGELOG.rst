@@ -1,3 +1,12 @@
+2026-10-27: Two-Mac Claude record collection
+------------------------------------------
+* Push read-only MacBook snapshots through the existing mac-mini SSH alias.
+* Preserve untitled sessions as unclassified metadata and retain existing Codex entries.
+* Keep full redacted selected-project ledger copies with verified content hashes.
+* Use unchanged-file metadata caches and hash-only heartbeats between content changes.
+* Show per-device freshness, scope and cross-device differences without rewriting originals.
+* Close verified no-change self-improvement runs without requesting a release decision.
+
 2026-10-27: Usage visibility and repeat-work reduction
 ----------------------------------------------------
 * Observe provider token counters by project and execution/review stage; distinguish cached input and unknown coverage.

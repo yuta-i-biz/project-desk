@@ -62,7 +62,10 @@ def tick(desk,ops,submitter=None):
    critique=json.dumps({'review':r.get('review'),'unresolved':r.get('unresolved')},ensure_ascii=False)[:6000]
    dispatch(desk,pid,child,problems,submitter,row['task_id'],critique,iteration)
    return
-  with desk.connect() as c:c.execute('UPDATE self_growth_runs SET state=?,reason=? WHERE fingerprint=?',('ready' if passed else 'held','独立検品済み。差分と結果を確認してから反映します。' if passed else '実行・検品・原本無変更の確認が揃わず停止。自動再実行なし。',row['fingerprint']))
+  no_changes=passed and isinstance((r.get('workspace') or {}).get('changed_files'),list) and not changes
+  state='resolved' if no_changes else 'ready' if passed else 'held'
+  reason='追加変更なし・独立検品済み。同じ版と症状の再実行はしません。' if no_changes else '独立検品済み。差分と結果を確認してから反映します。' if passed else '実行・検品・原本無変更の確認が揃わず停止。自動再実行なし。'
+  with desk.connect() as c:c.execute('UPDATE self_growth_runs SET state=?,reason=? WHERE fingerprint=?',(state,reason,row['fingerprint']))
   return
  # Durable claim prevents replay after a crash. Same revision/symptom is never re-run automatically.
  with desk.connect() as c:

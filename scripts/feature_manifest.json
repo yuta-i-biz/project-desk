@@ -18,7 +18,9 @@
     "この工程・完了条件で開始する",
     "蓄積したスキル・部品・プログラム",
     "AI使用量",
-    "reusable_builtins"
+    "reusable_builtins",
+    "Mac mini・MacBookの取込状況",
+    "端末間の記録に違いがある案件"
   ],
   "static/action_center.js": [
     "execution_status",
@@ -34,7 +36,8 @@
     "別端末の参照先は読み取りません",
     "truncated",
     "available_in_full",
-    "full_path"
+    "full_path",
+    "peer_document"
   ],
   "workflows.py": [
     "dispatching",
@@ -116,5 +119,19 @@
   "deterministic_checks.py": [
     "csv_checks",
     "inventory"
+  ],
+  "macbook_sync.py": [
+    "StrictHostKeyChecking=yes",
+    "BatchMode=yes",
+    "fingerprint"
+  ],
+  "peer_receiver.py": [
+    "peer_documents",
+    "needs_full",
+    "peer_sync.json"
+  ],
+  "peer_state.py": [
+    "freshness",
+    "differences"
   ]
 }

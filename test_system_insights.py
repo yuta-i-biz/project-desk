@@ -60,6 +60,10 @@ class GrowthTests(unittest.TestCase):
   (self.desk.data/'self_growth.json').write_text(json.dumps({'enabled':True,'project_id':self.pid}));self_growth.tick(self.desk,{},self.submit)
   (self.desk.data/'requests/task-0123456789abcdef/receipt.json').write_text(json.dumps({'execution_status':'succeeded','review':{'status':'reviewed'},'workspace':{'original_unchanged':True}}));self_growth.tick(self.desk,{},self.submit)
   self.assertEqual(self_growth.status(self.desk)['runs'][0]['state'],'ready');self.assertEqual((self.source/'app.py').read_text(),'test fixture')
+ def test_verified_no_change_closes_without_human_approval_or_repeat(self):
+  (self.desk.data/'self_growth.json').write_text(json.dumps({'enabled':True,'project_id':self.pid}));self_growth.tick(self.desk,{},self.submit)
+  (self.desk.data/'requests/task-0123456789abcdef/receipt.json').write_text(json.dumps({'execution_status':'succeeded','review':{'status':'reviewed'},'workspace':{'original_unchanged':True,'changed_files':[]}}));self_growth.tick(self.desk,{},self.submit)
+  self.assertEqual(self_growth.status(self.desk)['runs'][0]['state'],'resolved');self_growth.tick(self.desk,{},self.submit);self.assertEqual(len(self.calls),1)
  def test_uncertain_dispatch_never_replayed(self):
   self_growth.init(self.desk)
   with self.desk.connect() as c:c.execute("INSERT INTO self_growth_runs(fingerprint,task_id,state,reason,created) VALUES('f',NULL,'dispatching','uncertain','2026-10-27')")

@@ -68,7 +68,7 @@ class Desk:
         self.machine=read_json(self.data/'node.json',{}).get('name','このMac')
         self.db = self.data/'desk.sqlite3'
         self.lock = threading.RLock(); self.cache = None; self.cache_at = 0
-        self.title_cache = {}; self.token = secrets.token_urlsafe(32)
+        self.title_cache = {}; self.session_index_cache = {}; self.token = secrets.token_urlsafe(32)
         access_file=self.data/'access.json'
         if not access_file.exists():
             fd=os.open(access_file,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
@@ -135,36 +135,9 @@ class Desk:
                         'name':entry['name'],'updated':entry.get('last_touched') or board.get('_updated') or '',
                         'recorded_status':entry.get('status',''),'sections':{'次アクション':str(entry.get('next_action') or '')},
                         'path':str(board_path),'partial':False})
-            # Session metadata only: do not surface conversation bodies or tool results.
-            old_titles = read_json(runtime/'session_titles_cache.json',{})
-            if not isinstance(old_titles,dict): old_titles={}
-            session_root = self.home/'.claude/projects'
-            paths = list(session_root.glob('*/*.jsonl')) if session_root.exists() else []
-            for p in paths:
-                try:
-                    stat = p.stat(); sig = (stat.st_size,stat.st_mtime_ns)
-                    cached = self.title_cache.get(str(p))
-                    old = old_titles.get(str(p),{})
-                    if not isinstance(old,dict): old={}
-                    if cached and cached[0] == sig:
-                        title = cached[1]
-                    else:
-                        title = str(old.get('title') or '')
-                        with p.open('rb') as f:
-                            f.seek(max(0,stat.st_size-24576))
-                            tail=f.read(24576).decode('utf-8',errors='replace')
-                        titles=re.findall(r'"customTitle"\s*:\s*("(?:[^"\\]|\\.)*")',tail)
-                        if titles:
-                            try:title=json.loads(titles[-1])
-                            except ValueError:pass
-                        self.title_cache[str(p)]=(sig,title)
-                    if not title or old.get('internal'): continue
-                    company,project = named(title)
-                    sessions.append({'id':('macmini:claude:' if self.machine=='Mac mini' else 'claude:')+p.stem,'title':title,'company':company,'project_name':project,
-                        'type':'Claude Code','updated':dt.datetime.fromtimestamp(stat.st_mtime,JST).isoformat(timespec='seconds'),
-                        'observed_status':'会話記録あり・実行状態は未確認','snapshot_at':None})
-                except OSError:
-                    errors.append('一部の会話記録を読めませんでした。')
+            from remote_export import scan_sessions
+            local_sessions,session_coverage,session_errors=scan_sessions(self.home,self.machine,self.session_index_cache)
+            sessions.extend(local_sessions);errors.extend(session_errors)
             codex = read_json(self.data/'codex_threads.json',{})
             for t in codex.get('threads',[]) if isinstance(codex,dict) else []:
                 if not isinstance(t,dict) or t.get('kind')!='codex':continue
@@ -179,6 +152,8 @@ class Desk:
             if remote is None:remote=read_json(self.data/'mac_mini.json',{})
             remote_status=read_json(self.data/'peer_sync.json',None)
             if remote_status is None:remote_status=read_json(self.data/'mac_mini_sync.json',{})
+            from peer_state import freshness,differences
+            remote_status=freshness(remote_status or {},remote.get('captured_at') if isinstance(remote,dict) else None) if remote_status or remote else {}
             if isinstance(remote,dict):
                 sources.extend(remote.get('sources',[]))
                 sessions.extend(remote.get('sessions',[]))
@@ -215,6 +190,10 @@ class Desk:
                 p['current']=next((s['sections'].get('現在地') for s in p['sources'] if s['sections'].get('現在地')), '')
                 p['next_action']=next((s['sections'].get('次アクション') for s in p['sources'] if s['sections'].get('次アクション')), '')
                 p['blocker']=next((s['sections'].get('未解決') for s in p['sources'] if s['sections'].get('未解決')), '')
+                p['cross_machine_differences']=differences(p['sources'])
+                if p['cross_machine_differences']:
+                    p['current']='端末間の記録に違いがあります。端末別の内容を確認してください。'
+                    p['next_action']='端末別の記録差分を照合する（原本は未変更）'
                 p['machines']=sorted({s.get('machine','このMac') for s in p['sources']+p['sessions']})
             sheet_tasks=[]
             if canonical_ml:
@@ -280,7 +259,8 @@ class Desk:
                                'projects':sum(not p.get('archived') for p in ml_gantt.get('projects',[])),
                                'excluded_tabs':ml_gantt.get('excluded_tabs',[])},
                            'machines':[{'name':machine,'ledger_files':sum(s['type']=='案件台帳' and s.get('machine')==machine for s in sources),
-                               'sync':{'ok':True} if machine==self.machine else remote_status,
+                               'sync':{'ok':True,'state':'local','fresh':True} if machine==self.machine else remote_status,
+                               'session_coverage':session_coverage if machine==self.machine else remote.get('coverage',{}),
                                'captured_at':now() if machine==self.machine else remote.get('captured_at') if isinstance(remote,dict) else None}
                                for machine in sorted({self.machine}|{s.get('machine',self.machine) for s in sources})]},
                 'errors':list(dict.fromkeys(errors)),'indexed_at':now()}
